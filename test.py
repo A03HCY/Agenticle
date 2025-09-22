@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from agentframe import Agent, Group, Tool, Endpoint, Event
+from agenticle import Agent, Group, Tool, Endpoint, Event
 # Import rich components
 from rich.console import Console
 from rich.panel import Panel
