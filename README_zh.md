@@ -24,7 +24,7 @@ pip install agenticle
 或者，对于开发，克隆仓库并以可编辑模式安装：
 
 ```bash
-git clone https://github.com/A03HCY/AgentFrame.git
+git clone https://github.com/A03HCY/Agenticle.git
 cd Agenticle
 pip install -e .
 ```

@@ -24,7 +24,7 @@ pip install agenticle
 Or, for development, clone the repository and install in editable mode:
 
 ```bash
-git clone https://github.com/A03HCY/AgentFrame.git
+git clone https://github.com/A03HCY/Agenticle.git
 cd Agenticle
 pip install -e .
 ```
