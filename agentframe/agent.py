@@ -5,8 +5,8 @@ from openai import OpenAI
 from typing import List, Dict, Any, Optional, Union, Iterator
 
 from .schema import Endpoint
-from .tool import Tool, EndTaskTool
-from .event import Event, EventBroker
+from .tool   import Tool, EndTaskTool
+from .event  import Event
 
 class Agent:
     def __init__(
@@ -17,18 +17,28 @@ class Agent:
         tools: List[Tool],
         endpoint: Endpoint,
         model_id: str,
-        event_broker: EventBroker = EventBroker(),
         prompt_template_path: Optional[str] = None,
-        target_lang:str = 'en',
+        target_lang:str = 'English',
         max_steps: int = 10
     ):
+        """Initializes the Agent.
+
+        Args:
+            name (str): The name of the agent.
+            description (str): A description of the agent's purpose.
+            input_parameters (List[Dict[str, Any]]): A list of dictionaries describing the agent's input parameters.
+            tools (List[Tool]): A list of tools available to the agent.
+            endpoint (Endpoint): The API endpoint configuration for the language model.
+            model_id (str): The ID of the language model to use.
+            prompt_template_path (Optional[str]): The path to a Jinja2 template for the system prompt.
+            target_lang (str): The target language for the agent's responses.
+            max_steps (int): The maximum number of steps the agent can take.
+        """
         self.name = name
         self.description = description
         self.input_parameters = input_parameters
         self.model_id = model_id
-
         self.target_lang = target_lang
-        self.event_broker = event_broker
 
         os.environ['OPENAI_API_KEY'] = endpoint.api_key
         
@@ -41,7 +51,7 @@ class Agent:
         
         if "end_task" in self.tools:
             print("Warning: A user-provided tool named 'end_task' is being overridden by the built-in final answer tool.")
-        # 2. 无论如何，都内置我们标准的 EndTaskTool
+        # 2. In any case, build in our standard EndTaskTool
         self.tools["end_task"] = EndTaskTool()
 
         self._api_tools: List[Dict[str, Any]] = [t.info for t in self.tools.values()]
@@ -51,36 +61,50 @@ class Agent:
         self.history: List[Dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
     
     def _configure_with_tools(self, tools: List[Tool]):
-        """用给定的工具列表重新配置 Agent。"""
+        """Reconfigures the agent with a given list of tools.
+
+        Args:
+            tools (List[Tool]): The new list of tools to configure the agent with.
+        """
         self.tools = {tool.name: tool for tool in tools}
-        if not "end_task" in self.tools:
-            self.tools["end_task"] = EndTaskTool() # 确保 end_task 始终存在
+        self.tools["end_task"] = EndTaskTool() # Make sure end_task is always present
         
-        # 重新生成 API tools 和 system prompt
+        # Regenerate API tools and system prompt
         self._api_tools = [t.info for t in self.tools.values()]
         self.system_prompt = self._generate_system_prompt_from_template(
             getattr(self, '_prompt_template_path', None)
         )
-        self.reset() # 重置历史以应用新的系统提示
+        self.reset() # Reset history to apply new system prompt
 
 
     def _generate_system_prompt_from_template(self, template_path: Optional[str] = None) -> str:
-        """从 Jinja2 模板文件加载并渲染系统提示。"""
+        """Loads and renders the system prompt from a Jinja2 template file.
+
+        Args:
+            template_path (Optional[str]): The path to the Jinja2 template file. 
+                                           If None, a default path is used.
+
+        Returns:
+            str: The rendered system prompt.
+
+        Raises:
+            FileNotFoundError: If the template file is not found.
+        """
         
-        # 如果没有提供模板路径，就使用一个默认的硬编码路径
+        # If no template path is provided, use a default hard-coded path
         if template_path is None:
-            # 假设模板文件与 agent.py 在同一目录下的 prompts/ 文件夹中
+            # Assume the template file is in the prompts/ folder in the same directory as agent.py
             current_dir = os.path.dirname(os.path.abspath(__file__))
             template_path = os.path.join(current_dir, 'prompts', 'default_agent_prompt.md')
         try:
-            # 设置 Jinja2 环境，从文件系统加载模板
+            # Set up Jinja2 environment to load templates from the file system
             template_dir = os.path.dirname(template_path)
             template_filename = os.path.basename(template_path)
 
             env = jinja2.Environment(
                 loader=jinja2.FileSystemLoader(template_dir),
-                trim_blocks=True, # 自动移除模板标签后的第一个换行符
-                lstrip_blocks=True # 自动移除模板标签前的空格
+                trim_blocks=True, # Automatically remove the first newline after a template tag
+                lstrip_blocks=True # Automatically remove leading spaces before a template tag
             )
             
             template = env.get_template(template_filename)
@@ -95,20 +119,28 @@ class Agent:
             else:
                 plain_tools.append(tool)
 
-        # 准备要传递给模板的数据
+        # Prepare data to pass to the template
         template_data = {
             "agent_name": self.name,
             "agent_description": self.description,
-            "plain_tools": plain_tools, # 传递普通工具
-            "agent_tools": agent_tools, # 传递 Agent 工具
-            "tools": list(self.tools.values()), # 仍然传递完整的工具列表以备后用
-            "target_language": "Simplified Chinese"
+            "plain_tools": plain_tools, # Pass plain tools
+            "agent_tools": agent_tools, # Pass Agent tools
+            "tools": list(self.tools.values()), # Still pass the full list of tools for future use
+            "target_language": self.target_lang
         }
         
-        # 渲染模板
+        # Render the template
         return template.render(template_data)
 
     def _execute_tool(self, tool_call: Dict[str, Any]) -> Any:
+        """Executes a tool call.
+
+        Args:
+            tool_call (Dict[str, Any]): The tool call object from the language model.
+
+        Returns:
+            Any: The result of the tool execution, or an error message string.
+        """
         tool_name = tool_call.function.name
         tool_to_run = self.tools.get(tool_name)
         
@@ -122,30 +154,42 @@ class Agent:
             return f"Error executing tool '{tool_name}': {e}"
 
     def run(self, stream: bool = False, **kwargs) -> Union[str, Iterator[Event]]:
-        """
-        运行 Agent 的主循环。
+        """Runs the main loop of the Agent.
+
         Args:
-            stream (bool): 如果为 True，则返回一个事件生成器进行实时输出。
-                           如果为 False，则阻塞直到任务完成并返回最终字符串。
-            **kwargs: 启动 Agent 所需的输入参数。
+            stream (bool): If True, returns an event generator for real-time output.
+                           If False, blocks until the task is complete and returns the final string.
+            **kwargs: Input parameters required to start the Agent.
+
         Returns:
-            Union[str, Iterator[Event]]: 最终结果或事件流。
+            Union[str, Iterator[Event]]: The final result or the event stream.
         """
         if stream:
             return self._run_stream(**kwargs)
         else:
-            # 对于非流式，我们可以在内部模拟一个简单的事件处理器
+            # For non-streaming, we can simulate a simple event handler internally
             final_answer = ""
             for event in self._run_stream(**kwargs):
                 if event.type == "end":
                     final_answer = event.payload.get("final_answer", "")
             return final_answer
     def _run_stream(self, **kwargs) -> Iterator[Event]:
-        """【核心】作为事件生成器运行 Agent 的主循环。"""
-        # 重置历史记录以进行新的运行
+        """Runs the main loop of the Agent as an event generator.
+
+        This is the core method that drives the agent's think-act cycle. It
+        communicates with the language model, executes tools, and yields
+        events to report its progress.
+
+        Args:
+            **kwargs: The input parameters for the task.
+
+        Yields:
+            Iterator[Event]: A stream of events representing the agent's activity.
+        """
+        # Reset history for a new run
         self.reset()
         
-        # 1. 构造初始输入并 yield 开始事件
+        # 1. Construct initial input and yield start event
         initial_prompt = (
             "Task started. Here are your input parameters:\n"
             + json.dumps(kwargs, indent=2)
@@ -153,10 +197,10 @@ class Agent:
         )
         self.history.append({"role": "user", "content": initial_prompt})
         yield Event(f"Agent:{self.name}", "start", kwargs)
-        # 2. “思考-行动”循环
+        # 2. "Think-Act" loop
         for step in range(self.max_steps):
             yield Event(f"Agent:{self.name}", "step", {"current_step": step + 1})
-            # 3. 思考 (Think): 以流式调用 LLM
+            # 3. Think: Call LLM in streaming mode
             response_stream = self._client.chat.completions.create(
                 model=self.model_id,
                 messages=self.history,
@@ -164,17 +208,17 @@ class Agent:
                 tool_choice="auto",
                 stream=True
             )
-            # 4. 从流中重新组装响应
+            # 4. Reassemble response from the stream
             full_response_content = ""
             full_reasoning_content = ""
-            tool_calls_in_progress = [] # 用于组装工具调用
+            tool_calls_in_progress = [] # Used to assemble tool calls
             for chunk in response_stream:
                 try:
                     delta = chunk.choices[0].delta
                 except:
                     continue
                 
-                # a. 处理流式文本内容 (思考过程或最终答案)
+                # a. Handle streaming text content (thought process or final answer)
                 if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
                     full_reasoning_content += delta.reasoning_content
                     yield Event(f"Agent:{self.name}", "reasoning_stream", {"content": delta.reasoning_content})
@@ -182,61 +226,74 @@ class Agent:
                 if delta.content:
                     full_response_content += delta.content
                     yield Event(f"Agent:{self.name}", "content_stream", {"content": delta.content})
-                # b. 处理流式工具调用
+                # b. Handle streaming tool calls
                 if delta.tool_calls:
                     for tool_call_chunk in delta.tool_calls:
-                        # 如果是新的工具调用
+                        # If it's a new tool call
                         if tool_call_chunk.index >= len(tool_calls_in_progress):
                             tool_calls_in_progress.append(tool_call_chunk.function)
-                        else: # 否则，累加参数
+                        else: # Otherwise, accumulate arguments
                             func = tool_calls_in_progress[tool_call_chunk.index]
                             if tool_call_chunk.function.name:
                                 func.name = (func.name or "") + tool_call_chunk.function.name
                             if tool_call_chunk.function.arguments:
                                 func.arguments = (func.arguments or "") + tool_call_chunk.function.arguments
-                        # 实时 yield 工具调用构建过程
+                        # Yield the tool call construction process in real-time
                         yield Event(f"Agent:{self.name}", "tool_call_stream", {"index": tool_call_chunk.index, "delta": tool_call_chunk.function.dict()})
-            # 组装完整的消息以添加到历史记录
+            # Assemble the complete message to add to history
             assembled_message = {"role": "assistant"}
             if full_response_content:
                 assembled_message["content"] = full_response_content
             if tool_calls_in_progress:
-                # 注意: OpenAI SDK 在组装时需要完整的 tool_calls 结构
-                assembled_message["tool_calls"] = [{"id": f"call_{i}", "type": "function", "function": func.dict()} for i, func in enumerate(tool_calls_in_progress)]
-                # 为 tool_calls 伪造一个 ID，因为流式响应不提供它
-                # 但我们需要它来匹配 tool_result
+                # Clean and validate tool calls
+                valid_tool_calls = []
+                for i, func in enumerate(tool_calls_in_progress):
+                    # Ensure both name and arguments exist
+                    if not func.name or not func.arguments:
+                        continue
+                    # Try to parse arguments, discard if it fails
+                    try:
+                        json.loads(func.arguments)
+                        valid_tool_calls.append({"id": f"call_{i}", "type": "function", "function": func.dict()})
+                    except json.JSONDecodeError:
+                        continue # Discard invalid tool call
+                
+                if valid_tool_calls:
+                    assembled_message["tool_calls"] = valid_tool_calls
             
             self.history.append(assembled_message)
-            # 5. 决策和行动
-            if tool_calls_in_progress:
-                # 遍历所有工具调用
+            # 5. Decision and Action
+            if "tool_calls" in assembled_message:
+                # Iterate through all tool calls
                 for tool_call_data in assembled_message["tool_calls"]:
                     tool_name = tool_call_data['function']['name']
                     
-                    # a. 特殊处理 end_task
+                    # a. Special handling for end_task
                     if tool_name == "end_task":
                         task_result = json.loads(tool_call_data['function']['arguments'])
                         yield Event(f"Agent:{self.name}", "end", task_result)
-                        return # 结束生成器
+                        return # End the generator
 
-                    # b. 执行常规工具或 Agent
+                    # b. Execute regular tool or Agent
                     tool_args = json.loads(tool_call_data['function']['arguments'])
                     yield Event(f"Agent:{self.name}", "decision", {"tool_name": tool_name, "tool_args": tool_args})
                     
                     tool_call_id = tool_call_data['id']
                     
-                    # 执行工具并处理可能的事件流
+                    # Execute the tool and handle possible event stream
                     execution_generator = self._execute_tool_from_dict(tool_call_data)
                     
                     tool_output = ""
-                    # 如果是子 Agent，实时转发其事件
+                    # If it's a sub-agent, forward its events in real-time
                     if isinstance(execution_generator, Iterator):
                         for sub_event in execution_generator:
-                            yield sub_event # 实时转发
-                            # 捕获子 Agent 的最终答案作为工具输出
+                            yield sub_event # Forward in real-time
+                            # Capture the sub-agent's final answer as tool output
                             if sub_event.type == 'end' and sub_event.payload.get('final_answer'):
                                 tool_output = sub_event.payload['final_answer']
-                    else: # 如果是普通工具
+                            if sub_event.type == 'end' and sub_event.payload.get('error'):
+                                tool_output = sub_event.payload['error']
+                    else: # If it's a normal tool
                         tool_output = execution_generator
 
                     yield Event(f"Agent:{self.name}", "tool_result", {"tool_name": tool_name, "output": tool_output})
@@ -248,18 +305,25 @@ class Agent:
                         "content": str(tool_output)
                     })
                 continue
-            else: # 如果 LLM 没有调用工具，而是直接回复
+            else: # If the LLM replies directly without calling a tool
                 yield Event(f"Agent:{self.name}", "thinking", {"content": full_response_content})
-                # 我们强制它必须用 end_task 结束，所以继续循环
+                # We force it to end with end_task, so continue the loop
                 continue
-        # 如果循环结束仍未完成
+        # If the loop finishes without completion
         final_message = f"Error: Agent '{self.name}' failed to complete the task within {self.max_steps} steps."
         yield Event(f"Agent:{self.name}", "error", {"message": final_message})
+        yield Event(f"Agent:{self.name}", "end", {"error": final_message})
         return
     
     def _execute_tool_from_dict(self, tool_call_dict: Dict) -> Any:
-        """
-        执行工具。如果工具是 Agent，则返回其事件生成器。
+        """Executes a tool. If the tool is an Agent, returns its event generator.
+
+        Args:
+            tool_call_dict (Dict): The tool call dictionary.
+
+        Returns:
+            Any: The result of the tool execution. This can be a direct result
+                 or an iterator of events if the tool is another agent.
         """
         name = tool_call_dict['function']['name']
         args = json.loads(tool_call_dict['function']['arguments'])
@@ -269,39 +333,43 @@ class Agent:
             return f"Error: Tool '{name}' not found."
         
         try:
-            # 如果是 Agent 工具，它将返回一个生成器
+            # If it's an Agent tool, it will return a generator
             if tool.is_agent_tool:
-                # 确保以流式模式调用
+                # Ensure it's called in streaming mode
                 return tool.execute(stream=True, **args)
-            else: # 否则，它将返回一个直接结果
+            else: # Otherwise, it will return a direct result
                 return tool.execute(**args)
         except Exception as e:
             return f"Error executing tool '{name}': {e}"
 
     def as_tool(self) -> Tool:
+        """Wraps the entire Agent instance into a Tool.
+
+        This allows the agent to be called by other agents.
+
+        Returns:
+            Tool: A Tool instance that encapsulates this agent.
         """
-        将整个 Agent 实例包装成一个 Tool，使其可以被其他 Agent 调用。
-        """
-        # 动态创建一个包装函数
+        # Dynamically create a wrapper function
         def agent_runner(stream: bool = False, **kwargs):
-            # 每次调用时，都创建一个新的 Agent 实例以保证状态隔离
+            # On each call, create a new Agent instance to ensure state isolation
             agent_instance = Agent(
                 name=self.name,
                 description=self.description,
                 input_parameters=self.input_parameters,
-                tools=self.original_tools, # 确保隔离
+                tools=self.original_tools, # Ensure isolation
                 endpoint=self.endpoint,
                 model_id=self.model_id,
                 max_steps=self.max_steps
             )
             return agent_instance.run(stream=stream, **kwargs)
 
-        # 伪造一个函数，以便 Tool 类可以解析它
-        # 这一步有点 hacky，但非常有效
+        # Fake a function so the Tool class can parse it
+        # This step is a bit hacky, but very effective
         agent_runner.__name__ = self.name
         agent_runner.__doc__ = f'An Agent: {self.description}'
         
-        # 动态构建函数签名
+        # Dynamically build the function signature
         from inspect import Parameter, Signature
         params = [
             Parameter(name=p['name'], kind=Parameter.POSITIONAL_OR_KEYWORD) 
@@ -312,4 +380,8 @@ class Agent:
         return Tool(func=agent_runner, is_agent_tool=True)
 
     def reset(self):
+        """Resets the agent's history.
+
+        This clears the conversation history, preparing the agent for a new run.
+        """
         self.history = [{"role": "system", "content": self.system_prompt}]

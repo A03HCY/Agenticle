@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentframe"
+dynamic = ["version"]
+authors = [
+  { name="A03HCY", email="acdphc@qq.com" },
+]
+description = "A lightweight, event-driven Python framework for building and orchestrating multi-agent systems."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "openai",
+    "jinja2",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/A03HCY/AgentFrame"
+"Bug Tracker" = "https://github.com/A03HCY/AgentFrame/issues"

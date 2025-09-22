@@ -4,12 +4,12 @@ from .utils import analyze_tool_function
 
 class Tool:
     """
-    Agent 可以使用的工具的基类。
+    Base class for tools that can be used by an Agent.
 
-    这个类可以通过两种方式使用：
-    1. (推荐) 直接用一个带有良好文档字符串的函数来实例化，Tool 将自动解析其元数据。
-       示例: `my_tool = Tool(my_function)`
-    2. (适用于复杂情况) 继承这个类，并重写 `execute` 方法。
+    This class can be used in two ways:
+    1. (Recommended) Instantiate directly with a well-documented function, and Tool will automatically parse its metadata.
+       Example: `my_tool = Tool(my_function)`
+    2. (For complex cases) Inherit from this class and override the `execute` method.
     """
 
     def __init__(
@@ -20,19 +20,19 @@ class Tool:
         is_agent_tool: bool = False
     ):
         """
-        创建一个工具实例。
+        Creates a tool instance.
 
         Args:
-            func (Callable): 要被封装为工具的 Python 函数。
-            name (Optional[str]): 可选。手动指定工具的名称。如果为 None，则使用函数名。
-            description (Optional[str]): 可选。手动指定工具的描述。如果为 None，则自动从函数的文档字符串中解析。
+            func (Callable): The Python function to be wrapped as a tool.
+            name (Optional[str]): Optional. Manually specify the tool's name. If None, the function name is used.
+            description (Optional[str]): Optional. Manually specify the tool's description. If None, it's parsed from the function's docstring.
         """
         self.func = func
         
-        # 1. 使用我们强大的分析函数来解析元数据
+        # 1. Use our powerful analysis function to parse metadata
         analysis = analyze_tool_function(func)
         
-        # 2. 设置工具的核心属性，允许手动覆盖
+        # 2. Set the core properties of the tool, allowing for manual override
         self.name: str = name or func.__name__
         self.description: str = description or analysis.get('docstring', 'No description provided.')
         self.parameters: List[Dict[str, Any]] = analysis.get('parameters', [])
@@ -41,15 +41,15 @@ class Tool:
     @property
     def info(self) -> Dict[str, Any]:
         """
-        生成一个符合 OpenAI Function Calling 规范的工具描述字典。
+        Generates a tool description dictionary compliant with the OpenAI Function Calling specification.
         
         Returns:
-            一个可以被直接序列化为 JSON 并发送给 LLM API 的字典。
+            A dictionary that can be directly serialized to JSON and sent to the LLM API.
         """
-        # 1. 构建 'properties' 和 'required' 列表
+        # 1. Build 'properties' and 'required' list
         json_schema_properties = {}
         required_params = []
-        # 简单的 Python 类型到 JSON Schema 类型的映射
+        # Simple mapping from Python types to JSON Schema types
         py_to_json_type_map = {
             'str': 'string',
             'int': 'integer',
@@ -92,46 +92,49 @@ class Tool:
         return tool_info
     
     def __call__(self, **kwargs):
-        self.execute(**kwargs)
+        """Allows the tool instance to be called like a function."""
+        return self.execute(**kwargs)
         
     def execute(self, **kwargs: Any) -> Any:
         """
-        执行工具的核心逻辑。
+        Executes the core logic of the tool.
 
         Args:
-            **kwargs: 从 Agent 传入的参数，键是参数名，值是参数值。
+            **kwargs: Parameters passed from the Agent, where keys are parameter names and values are their values.
 
         Returns:
-            工具函数的执行结果。
+            The execution result of the tool's function.
         """
         return self.func(**kwargs)
 
     def __repr__(self) -> str:
+        """Provides a string representation of the Tool instance."""
         return f"Tool(name='{self.name}')"
 
 
 class EndTaskTool(Tool):
     """
-    一个特殊的工具，Agent 调用它来表示任务已完成并返回最终答案。
+    A special tool that an Agent calls to indicate the task is complete and to return the final answer.
     """
     def __init__(self):
-        # 这个工具的函数签名定义了 Agent 的最终输出结构
+        """Initializes the EndTaskTool."""
+        # The function signature of this tool defines the final output structure of the Agent.
         def end_task(final_answer: str) -> None:
             """
-            当你已经获得了最终答案并准备好结束任务时，调用此工具。
+            Call this tool when you have the final answer and are ready to end the task.
             Args:
-                final_answer (str): 最终要返回给用户或上层代理的完整答案。
+                final_answer (str): The complete answer to be returned to the user or the parent agent.
             """
-            # 这个函数实际上不会被执行，它只是用来提供签名和文档。
+            # This function is not actually executed; it's just for providing the signature and documentation.
             pass
         
-        # 调用父类的构造函数，并传入这个伪函数
+        # Call the parent constructor with this pseudo-function
         super().__init__(
             func=end_task,
             name="end_task",
-            description="当你完成了所有步骤并准备好向用户提供最终答案时，调用此函数。"
+            description="Call this function when you have completed all steps and are ready to provide the final answer to the user."
         )
     def execute(self, **kwargs: Any) -> Any:
-        # 这个执行函数也不做任何事，因为它的调用会在 Agent 循环中被特殊处理。
-        # 它仅仅返回参数，以防万一在非预期的流程中被调用。
+        # This execute function also does nothing, as its call is specially handled in the Agent loop.
+        # It merely returns the arguments in case it's called in an unexpected flow.
         return kwargs

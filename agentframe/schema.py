@@ -4,11 +4,11 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Endpoint:
     """
-    用于存储 API 的接入点和凭证信息。
+    Stores API endpoint and credential information.
     
     Attributes:
-        api_key (str): 用于认证的 API 密钥。
-        base_url (str): API 的基础 URL。
+        api_key (str): The API key for authentication.
+        base_url (str): The base URL of the API.
     """
     api_key: str
     base_url: str

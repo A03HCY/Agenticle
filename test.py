@@ -1,9 +1,6 @@
+import os
 from dotenv import load_dotenv
-from agentframe.agent import Agent
-from agentframe.group import Group
-from agentframe.tool import Tool
-from agentframe.schema import Endpoint
-from agentframe.event import Event
+from agentframe import Agent, Group, Tool, Endpoint, Event
 # Import rich components
 from rich.console import Console
 from rich.panel import Panel
@@ -109,8 +106,8 @@ def get_current_weather(location: str):
 
 def find_tourist_attractions(location: str):
     """查找指定地点的热门旅游景点。"""
-    if location.lower() == "tokyo":
-        return "Popular attractions in Tokyo include: Tokyo Tower, Senso-ji Temple, and the Imperial Palace."
+    if location.lower() == "beijing":
+        return "Popular attractions in Beijing include: the Great Wall, the Forbidden City, and the Summer Palace."
     return f"Could not find attractions for {location}."
 
 def get_flight_info(destination: str):
@@ -119,9 +116,18 @@ def get_flight_info(destination: str):
 
 if __name__ == "__main__":
     load_dotenv()
+    
+    # --- Load configuration from .env file ---
+    api_key = os.getenv("API_KEY")
+    base_url = os.getenv("BASE_URL")
+    model_id = os.getenv("MODEL_ID")
+
+    if not api_key or not base_url or not model_id:
+        raise ValueError("API_KEY, BASE_URL, and MODEL_ID must be set in the .env file.")
+
     openai_endpoint = Endpoint(
-        api_key= 'sk-***',
-        base_url=''
+        api_key=api_key,
+        base_url=base_url
     )
     console = Console()
 
@@ -135,7 +141,7 @@ if __name__ == "__main__":
         input_parameters=[{"name": "location"}],
         tools=[Tool(get_current_weather)],
         endpoint=openai_endpoint,
-        model_id='gemini-2.5-flash-lite'
+        model_id=model_id
     )
 
     search_agent = Agent(
@@ -144,7 +150,7 @@ if __name__ == "__main__":
         input_parameters=[{"name": "location"}],
         tools=[Tool(find_tourist_attractions)],
         endpoint=openai_endpoint,
-        model_id='gemini-2.5-flash-lite'
+        model_id=model_id
     )
 
     # --- 3. 创建管理者 Agent ---
@@ -155,7 +161,7 @@ if __name__ == "__main__":
         input_parameters=[{"name": "user_request"}],
         tools=[], # No direct tools, it delegates
         endpoint=openai_endpoint,
-        model_id='gemini-2.5-flash-lite'
+        model_id=model_id
     )
 
     # --- 4. 组建团队 (Group) ---
@@ -168,7 +174,7 @@ if __name__ == "__main__":
     )
 
     # --- 5. 运行一个需要协作的复杂任务 ---
-    user_query = "我想去东京旅行，现在天气怎么样？有哪些著名的景点？另外帮我看看航班信息。"
+    user_query = "我想去北京旅行，现在天气怎么样？有哪些著名的景点？另外帮我看看航班信息。"
 
     console.print(Rule(f"[bold]Executing Complex Task for Group: {travel_agency.name}[/]", style="magenta"))
     
