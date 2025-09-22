@@ -1,8 +1,8 @@
 [English](./README.md)
 
-# AgentFrame
+# Agenticle
 
-AgentFrame 是一个轻量级的、事件驱动的 Python 框架，用于构建和编排多智能体系统。它提供了简单而强大的抽象，用于创建独立的智能体，为它们配备工具，并让它们在群组中协作以解决复杂任务。
+Agenticle 是一个轻量级的、事件驱动的 Python 框架，用于构建和编排多智能体系统。它提供了简单而强大的抽象，用于创建独立的智能体，为它们配备工具，并让它们在群组中协作以解决复杂任务。
 
 ## 核心特性
 
@@ -19,7 +19,7 @@ AgentFrame 是一个轻量级的、事件驱动的 Python 框架，用于构建�
 
 ```bash
 git clone https://github.com/A03HCY/AgentFrame.git
-cd AgentFrame
+cd Agenticle
 pip install -e .
 ```
 
@@ -30,7 +30,7 @@ pip install -e .
 您可以轻松创建一个独立的智能体并为其配备工具。
 
 ```python
-from agentframe import Agent, Tool, Endpoint
+from agenticle import Agent, Tool, Endpoint
 
 # 定义一个简单的函数作为工具使用
 def get_current_weather(location: str):
@@ -65,10 +65,10 @@ for event in event_stream:
 
 ### 2. 构建多智能体团队 (Group)
 
-AgentFrame 的真正威力在于让智能体协作。以下是如何构建一个“旅行社”团队，其中管理者将任务委派给专员。
+Agenticle 的真正威力在于让智能体协作。以下是如何构建一个“旅行社”团队，其中管理者将任务委派给专员。
 
 ```python
-from agentframe import Agent, Group, Tool, Endpoint
+from agenticle import Agent, Group, Tool, Endpoint
 
 # (定义 get_current_weather, find_tourist_attractions 等函数)
 # (创建 weather_agent, search_agent 等智能体)
@@ -149,7 +149,7 @@ for event in event_stream:
 
 ## 高级用法: 使用提示词定制智能体行为
 
-AgentFrame 使用基于 Jinja2 的强大提示词模板系统来定义智能体的核心行为和推理过程。默认的提示词位于 `agentframe/prompts/default_agent_prompt.md`，它指示智能体遵循一个“思考-行动”循环。
+Agenticle 使用基于 Jinja2 的强大提示词模板系统来定义智能体的核心行为和推理过程。默认的提示词位于 `agenticle/prompts/default_agent_prompt.md`，它指示智能体遵循一个“思考-行动”循环。
 
 您可以通过创建自己的提示词模板并将其文件路径传递给 `Agent` 的构造函数来定制此行为。
 

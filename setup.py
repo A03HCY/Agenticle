@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 
 def get_version():
-    with open('agentframe/__init__.py', 'r') as f:
+    with open('agenticle/__init__.py', 'r') as f:
         version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", f.read(), re.M)
         if version_match:
             return version_match.group(1)
@@ -11,12 +11,12 @@ def get_version():
 
 
 setup(
-    name="agentframe",
+    name="agenticle",
     version=get_version(),
     packages=find_packages(),
     # Include additional data files from the package
     package_data={
-        'agentframe': ['prompts/*.md'],
+        'agenticle': ['prompts/*.md'],
     },
     # The rest of the metadata is in pyproject.toml
 )

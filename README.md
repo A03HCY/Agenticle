@@ -1,8 +1,8 @@
 [中文](./README_zh.md)
 
-# AgentFrame
+# Agenticle
 
-AgentFrame is a lightweight, event-driven Python framework for building and orchestrating multi-agent systems. It provides simple yet powerful abstractions to create individual agents, equip them with tools, and make them collaborate in groups to solve complex tasks.
+Agenticle is a lightweight, event-driven Python framework for building and orchestrating multi-agent systems. It provides simple yet powerful abstractions to create individual agents, equip them with tools, and make them collaborate in groups to solve complex tasks.
 
 ## Core Features
 
@@ -19,7 +19,7 @@ Clone the repository and install the package in editable mode:
 
 ```bash
 git clone https://github.com/A03HCY/AgentFrame.git
-cd AgentFrame
+cd Agenticle
 pip install -e .
 ```
 
@@ -30,7 +30,7 @@ pip install -e .
 You can easily create a standalone agent and equip it with tools.
 
 ```python
-from agentframe import Agent, Tool, Endpoint
+from agenticle import Agent, Tool, Endpoint
 
 # Define a simple function to be used as a tool
 def get_current_weather(location: str):
@@ -65,10 +65,10 @@ for event in event_stream:
 
 ### 2. Building a Multi-Agent Team (Group)
 
-The true power of AgentFrame lies in making agents collaborate. Here's how to build a "Travel Agency" team where a manager delegates tasks to specialists.
+The true power of Agenticle lies in making agents collaborate. Here's how to build a "Travel Agency" team where a manager delegates tasks to specialists.
 
 ```python
-from agentframe import Agent, Group, Tool, Endpoint
+from agenticle import Agent, Group, Tool, Endpoint
 
 # (Define get_current_weather, find_tourist_attractions, etc.)
 # (Create weather_agent, search_agent, etc.)
@@ -149,7 +149,7 @@ Each `Event` has a `source` (e.g., `Agent:Weather_Specialist`), a `type`, and a 
 
 ## Advanced: Customizing Agent Behavior with Prompts
 
-AgentFrame uses a powerful prompt templating system based on Jinja2 to define the core behavior and reasoning process of an agent. The default prompt is located at `agentframe/prompts/default_agent_prompt.md`, which instructs the agent to follow a `Think-Act` cycle.
+Agenticle uses a powerful prompt templating system based on Jinja2 to define the core behavior and reasoning process of an agent. The default prompt is located at `agenticle/prompts/default_agent_prompt.md`, which instructs the agent to follow a `Think-Act` cycle.
 
 You can customize this behavior by creating your own prompt template and passing its file path to the `Agent` constructor.
 

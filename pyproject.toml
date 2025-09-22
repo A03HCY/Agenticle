@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentframe"
+name = "agenticle"
 dynamic = ["version"]
 authors = [
   { name="A03HCY", email="acdphc@qq.com" },
