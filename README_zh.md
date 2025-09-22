@@ -15,7 +15,13 @@ Agenticle 是一个轻量级的、事件驱动的 Python 框架，用于构建�
 
 ## 安装
 
-克隆仓库并以可编辑模式安装包：
+直接从 PyPI 安装包：
+
+```bash
+pip install agenticle
+```
+
+或者，对于开发，克隆仓库并以可编辑模式安装：
 
 ```bash
 git clone https://github.com/A03HCY/AgentFrame.git

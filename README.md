@@ -15,7 +15,13 @@ Agenticle is a lightweight, event-driven Python framework for building and orche
 
 ## Installation
 
-Clone the repository and install the package in editable mode:
+Install the package directly from PyPI:
+
+```bash
+pip install agenticle
+```
+
+Or, for development, clone the repository and install in editable mode:
 
 ```bash
 git clone https://github.com/A03HCY/AgentFrame.git
