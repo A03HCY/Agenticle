@@ -8,7 +8,7 @@ dynamic = ["version"]
 authors = [
   { name="A03HCY", email="acdphc@qq.com" },
 ]
-description = "A lightweight, event-driven Python framework for building and orchestrating multi-agent systems."
+description = "A lightweight, extensible Python framework for building and orchestrating single or multi-agent AI systems. | 一个轻量、可扩展的 Python 框架，用于构建和编排单智能体或多智能体 AI 系统。"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
@@ -19,6 +19,8 @@ classifiers = [
 dependencies = [
     "openai",
     "jinja2",
+    "sseclient",
+    "requests"
 ]
 
 [project.urls]

@@ -8,6 +8,7 @@ Agenticle 是一个轻量级的、事件驱动的 Python 框架，用于构建�
 
 - **模块化智能体**: 定义具有不同角色、工具和配置的自主智能体。
 - **简单的工具集成**: 轻松将任何 Python 函数包装成一个智能体可以使用的 `Tool`。
+- **外部工具集成 (MCP)**: 通过模型上下文协议 (Model Context Protocol) 连接到外部的、语言无关的工具服务器。
 - **协作群组**: 在一个 `Group` 中编排多个智能体，使它们能够相互委派任务。
 - **灵活的通信模式**: 使用 `broadcast` 或 `manager_delegation` 等模式控制智能体在群组内的交互方式。
 - **事件驱动与可流式处理**: 整个执行过程是一个 `Event` 对象流，提供了完全的透明度，并使得构建实时用户界面和日志变得容易。
@@ -108,6 +109,40 @@ event_stream = travel_agency.run(stream=True, user_request=user_query)
 for event in event_stream:
     print(event)
 ```
+
+## 通过 MCP 与外部工具集成
+
+Agenticle 支持 **模型上下文协议 (Model Context Protocol, MCP)**，使智能体能够连接并使用来自外部、语言无关的服务器的工具。这使您能够将智能体的能力扩展到简单的 Python 函数之外，与微服务、外部 API 或用其他语言编写的工具集成。
+
+```python
+from agenticle import MCP
+
+# 连接到一个 MCP 服务器 (可以是一个本地脚本或一个远程 URL)
+# 使用本地 Python 脚本的示例:
+# mcp_server_endpoint = "python -m your_mcp_server_module"
+# 使用远程服务器的示例:
+# mcp_server_endpoint = "http://localhost:8000/mcp"
+
+mcp_client = MCP(mcp_server_endpoint)
+
+# MCP 客户端会自动从服务器列出工具
+# 并将它们转换为 Agenticle 的 Tool 对象。
+mcp_tools = mcp_client.list_tools()
+
+# 现在，您可以将这些工具添加给任何智能体
+remote_tool_agent = Agent(
+    name="远程工具使用者",
+    description="一个可以使用来自外部服务器工具的智能体。",
+    tools=mcp_tools,
+    # ... 其他智能体配置
+)
+
+# 该智能体现在可以像调用本地 Python 函数一样
+# 调用 'get_database_records' 或 'process_image' 等工具。
+remote_tool_agent.run("从数据库中获取最近 5 条用户记录。")
+```
+
+这个强大的特性使得 Agenticle 生态系统具有高度的可扩展性和互操作性。
 
 ## 关键概念
 

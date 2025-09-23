@@ -17,6 +17,7 @@ class Tool:
         func: Callable,
         name: Optional[str] = None,
         description: Optional[str] = None,
+        parameters: Optional[List[Dict[str, Any]]] = None,
         is_agent_tool: bool = False
     ):
         """
@@ -26,6 +27,7 @@ class Tool:
             func (Callable): The Python function to be wrapped as a tool.
             name (Optional[str]): Optional. Manually specify the tool's name. If None, the function name is used.
             description (Optional[str]): Optional. Manually specify the tool's description. If None, it's parsed from the function's docstring.
+            parameters (Optional[List[Dict[str, Any]]]): Optional. Manually specify the tool's parameters. If None, they are parsed from the function's signature.
         """
         self.func = func
         
@@ -35,7 +37,7 @@ class Tool:
         # 2. Set the core properties of the tool, allowing for manual override
         self.name: str = name or func.__name__
         self.description: str = description or analysis.get('docstring', 'No description provided.')
-        self.parameters: List[Dict[str, Any]] = analysis.get('parameters', [])
+        self.parameters: List[Dict[str, Any]] = parameters or analysis.get('parameters', [])
         self.is_agent_tool = is_agent_tool
     
     @property

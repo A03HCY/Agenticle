@@ -1,6 +1,8 @@
-from typing           import Callable, Any, Dict, List
+from typing           import Callable, Any, Dict, List, Union
 from docstring_parser import parse
 import inspect
+import os
+import base64
 
 def get_function_details(func: Callable) -> Dict[str, Any]:
     """
@@ -94,3 +96,20 @@ def analyze_tool_function(func: Callable) -> Dict[str, Any]:
         'docstring': summary,
         'parameters': enhanced_parameters
     }
+
+
+def req_base64_file(path:str) -> str:
+    return base64.b64encode(req_file(path, mode='rb')).decode('utf-8')
+
+
+def req_file(path:str, mode:str='r', encoding:str='utf-8') -> Union[str, bytes]:
+    '''
+    从文件中读取内容
+    '''
+    if not os.path.isfile(path): return b'' if 'b' in mode else ''
+    if 'b' in mode:
+        with open(path, mode) as f:
+            return f.read()
+    else:
+        with open(path, mode, encoding=encoding) as f:
+            return f.read()

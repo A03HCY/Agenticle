@@ -8,6 +8,7 @@ Agenticle is a lightweight, event-driven Python framework for building and orche
 
 - **Modular Agents**: Define autonomous agents with distinct roles, tools, and configurations.
 - **Simple Tool Integration**: Easily wrap any Python function into a `Tool` that agents can use.
+- **External Tool Integration (MCP)**: Connect to external, language-agnostic tool servers via the Model Context Protocol.
 - **Collaborative Groups**: Orchestrate multiple agents in a `Group`, enabling them to delegate tasks to each other.
 - **Flexible Communication Patterns**: Control how agents interact within a group using modes like `broadcast` or `manager_delegation`.
 - **Event-Driven & Streamable**: The entire execution process is a stream of `Event` objects, providing full transparency and making it easy to build real-time UIs and logs.
@@ -108,6 +109,40 @@ event_stream = travel_agency.run(stream=True, user_request=user_query)
 for event in event_stream:
     print(event)
 ```
+
+## Integrating with External Tools via MCP
+
+Agenticle supports the **Model Context Protocol (MCP)**, enabling agents to connect to and utilize tools from external, language-agnostic servers. This allows you to extend an agent's capabilities beyond simple Python functions, integrating with microservices, external APIs, or tools written in other languages.
+
+```python
+from agenticle import MCP
+
+# Connect to an MCP server (can be a local script or a remote URL)
+# Example with a local Python script:
+# mcp_server_endpoint = "python -m your_mcp_server_module"
+# Example with a remote server:
+# mcp_server_endpoint = "http://localhost:8000/mcp"
+
+mcp_client = MCP(mcp_server_endpoint)
+
+# The MCP client automatically lists tools from the server
+# and converts them into Agenticle Tool objects.
+mcp_tools = mcp_client.list_tools()
+
+# Now, you can add these tools to any agent
+remote_tool_agent = Agent(
+    name="Remote_Tool_User",
+    description="An agent that can use tools from an external server.",
+    tools=mcp_tools,
+    # ... other agent config
+)
+
+# The agent can now call tools like 'get_database_records' or 'process_image'
+# as if they were local Python functions.
+remote_tool_agent.run("Fetch the last 5 user records from the database.")
+```
+
+This powerful feature makes the Agenticle ecosystem highly extensible and interoperable.
 
 ## Key Concepts
 
