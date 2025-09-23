@@ -379,6 +379,24 @@ class Agent:
 
         return Tool(func=agent_runner, is_agent_tool=True)
 
+    def get_state(self) -> Dict[str, Any]:
+        """Gets the current state of the agent.
+
+        Returns:
+            A dictionary containing the agent's history.
+        """
+        return {
+            "history": self.history
+        }
+
+    def set_state(self, state: Dict[str, Any]):
+        """Sets the state of the agent from a state dictionary.
+
+        Args:
+            state: A dictionary containing the agent's state.
+        """
+        self.history = state.get("history", [{"role": "system", "content": self.system_prompt}])
+
     def reset(self):
         """Resets the agent's history.
 

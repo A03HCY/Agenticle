@@ -140,3 +140,124 @@ class EndTaskTool(Tool):
         # This execute function also does nothing, as its call is specially handled in the Agent loop.
         # It merely returns the arguments in case it's called in an unexpected flow.
         return kwargs
+
+
+import os
+import tempfile
+import shutil
+
+
+class Workspace:
+    """Manages a shared workspace for agents, providing sandboxed file tools.
+
+    This class creates a secure directory that agents can use to read, write,
+    and list files. It can manage either a user-specified directory or a
+    temporary one that is automatically cleaned up.
+
+    When integrated with a `Group`, the file manipulation methods (`list_files`,
+    `read_file`, `write_file`) are exposed as tools to all agents in that group,
+    ensuring they all operate within the same file system context.
+
+    Attributes:
+        path (str): The absolute path to the workspace directory.
+    """
+    def __init__(self, path: Optional[str] = None):
+        """Initializes the Workspace.
+
+        If a path is provided, it will be used as the workspace directory.
+        If the path does not exist, it will be created. If no path is
+        provided, a new temporary directory will be created by the system.
+
+        Args:
+            path (Optional[str]): The directory path for the workspace.
+                If None, a temporary directory is created.
+        """
+        if path:
+            self.path = os.path.abspath(path)
+            os.makedirs(self.path, exist_ok=True)
+            self._is_temp = False
+        else:
+            self.path = tempfile.mkdtemp()
+            self._is_temp = True
+
+    def _resolve_path(self, file_path: str) -> str:
+        """Resolves a relative path to an absolute path within the workspace, preventing directory traversal."""
+        # Normalize the path to prevent '..' tricks
+        abs_path = os.path.abspath(os.path.join(self.path, file_path))
+        if not abs_path.startswith(self.path):
+            raise ValueError("Access denied: Path is outside the workspace.")
+        return abs_path
+
+    def list_files(self, sub_path: str = '.') -> str:
+        """Lists files and directories within a sub-path of the workspace.
+
+        Args:
+            sub_path (str): The relative path from the workspace root
+                to list files from. Defaults to the workspace root.
+
+        Returns:
+            str: A newline-separated string of file and directory names.
+        """
+        target_path = self._resolve_path(sub_path)
+        return "\n".join(os.listdir(target_path))
+
+    def read_file(self, file_path: str) -> str:
+        """Reads the content of a file within the workspace.
+
+        Args:
+            file_path (str): The relative path of the file to read.
+
+        Returns:
+            str: The content of the file.
+        """
+        abs_path = self._resolve_path(file_path)
+        with open(abs_path, 'r', encoding='utf-8') as f:
+            return f.read()
+
+    def write_file(self, file_path: str, content: str) -> str:
+        """Writes content to a file within the workspace.
+
+        If the file or its parent directories do not exist, they will be
+        created. If the file already exists, its content will be overwritten.
+
+        Args:
+            file_path (str): The relative path of the file to write to.
+            content (str): The content to write to the file.
+
+        Returns:
+            str: A confirmation message indicating success.
+        """
+        abs_path = self._resolve_path(file_path)
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        with open(abs_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return f"File '{file_path}' written successfully."
+
+    def get_tools(self) -> List['Tool']:
+        """Returns a list of Tool instances for interacting with the workspace.
+
+        These tools are generated from the workspace's own methods and are
+        sandboxed to operate only within the workspace directory.
+
+        Returns:
+            List[Tool]: A list of `Tool` objects for `list_files`,
+                `read_file`, and `write_file`.
+        """
+        return [
+            Tool(self.list_files),
+            Tool(self.read_file),
+            Tool(self.write_file)
+        ]
+
+    def cleanup(self):
+        """Removes the workspace directory if it was created as a temporary directory.
+
+        This method should be called after the workspace is no longer needed
+        to ensure system resources are freed. It has no effect if the
+        workspace was initialized with a specific path.
+        """
+        if self._is_temp and os.path.exists(self.path):
+            shutil.rmtree(self.path)
+
+    def __repr__(self) -> str:
+        return f"Workspace(path='{self.path}')"

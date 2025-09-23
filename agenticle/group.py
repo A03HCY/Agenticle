@@ -1,7 +1,8 @@
+import json
 from typing import List, Dict, Union, Iterator, Optional
 
 from .agent import Agent
-from .tool  import Tool
+from .tool  import Tool, Workspace
 from .event import Event
 
 class Group:
@@ -18,6 +19,7 @@ class Group:
         agents: List[Agent],
         manager_agent_name: Optional[str] = None,
         shared_tools: Optional[List[Tool]] = None,
+        workspace: Optional[Union[str, Workspace]] = None,
         mode: str = 'broadcast'
     ):
         """Initializes an Agent Group.
@@ -28,6 +30,7 @@ class Group:
             manager_agent_name (str, optional): The name of the designated manager Agent.
                                                 If not provided, the first Agent in the list is used.
             shared_tools (Optional[List[Tool]], optional): A list of tools shared by the group.
+            workspace (Optional[Union[str, Workspace]], optional): A shared workspace for the group.
             mode (str, optional): The communication mode between Agents.
                                   'broadcast': All Agents can call each other.
                                   'manager_delegation': Only the manager can call other Agents.
@@ -36,9 +39,18 @@ class Group:
         self.agents: Dict[str, Agent] = {agent.name: agent for agent in agents}
         self.shared_tools = shared_tools or []
         self.mode = mode
+        self.workspace = None
 
         if not agents:
             raise ValueError("Group must contain at least one agent.")
+
+        if isinstance(workspace, Workspace):
+            self.workspace = workspace
+        elif isinstance(workspace, str):
+            self.workspace = Workspace(path=workspace)
+        
+        if self.workspace:
+            self.shared_tools.extend(self.workspace.get_tools())
 
         # Determine the Manager Agent
         if manager_agent_name:
@@ -97,6 +109,36 @@ class Group:
         else:
             # For non-streaming, directly call the manager's non-streaming run method
             return self.manager_agent.run(stream=False, **kwargs)
+
+    def save_state(self, path: str):
+        """Saves the state of the entire group to a file.
+
+        This includes the state of every agent in the group.
+
+        Args:
+            path (str): The file path to save the JSON state file to.
+        """
+        group_state = {
+            agent_name: agent.get_state()
+            for agent_name, agent in self.agents.items()
+        }
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(group_state, f, indent=2)
+
+    def load_state(self, path: str):
+        """Loads the state of the entire group from a file.
+
+        This restores the state of every agent in the group.
+
+        Args:
+            path (str): The file path to load the JSON state file from.
+        """
+        with open(path, 'r', encoding='utf-8') as f:
+            group_state = json.load(f)
+        
+        for agent_name, agent_state in group_state.items():
+            if agent_name in self.agents:
+                self.agents[agent_name].set_state(agent_state)
 
     def _run_stream(self, **kwargs) -> Iterator[Event]:
         """Runs the main loop of the Group as an event generator."""
