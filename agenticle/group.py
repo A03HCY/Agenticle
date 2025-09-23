@@ -34,12 +34,16 @@ class Group:
             mode (str, optional): The communication mode between Agents.
                                   'broadcast': All Agents can call each other.
                                   'manager_delegation': Only the manager can call other Agents.
+                                  'round_robin': Agents execute sequentially in a chain.
         """
         self.name = name
         self.agents: Dict[str, Agent] = {agent.name: agent for agent in agents}
+        self.agent_sequence: List[Agent] = agents
         self.shared_tools = shared_tools or []
         self.mode = mode
         self.workspace = None
+        self.manager_agent = None
+        self._should_resume = False
 
         if not agents:
             raise ValueError("Group must contain at least one agent.")
@@ -52,63 +56,89 @@ class Group:
         if self.workspace:
             self.shared_tools.extend(self.workspace.get_tools())
 
-        # Determine the Manager Agent
+        if mode == 'round_robin' and manager_agent_name:
+            print("Warning: 'manager_agent_name' is ignored in 'round_robin' mode.")
+
         if manager_agent_name:
             if manager_agent_name not in self.agents:
                 raise ValueError(f"Manager agent '{manager_agent_name}' not found in the group.")
             self.manager_agent = self.agents[manager_agent_name]
-        else:
-            self.manager_agent = list(self.agents.values())[0]  # Default to the first one
+        elif self.agent_sequence:
+            self.manager_agent = self.agent_sequence[0]
         
-        # Core: Automatically wire the agents to know each other
         self._wire_agents()
 
     def _wire_agents(self):
         """
-        Configures the toolset for each agent in the group based on the set mode.
+        Configures the toolset and context for each agent in the group based on the set mode.
         """
         all_agents_as_tools = {name: agent.as_tool() for name, agent in self.agents.items()}
 
-        for agent_name, agent in self.agents.items():
+        for i, agent in enumerate(self.agent_sequence):
             final_toolset = []
             
-            # 1. Add the agent's own native tools
             if hasattr(agent, 'original_tools'):
                 final_toolset.extend(agent.original_tools)
             
-            # 2. Add group shared tools
             final_toolset.extend(self.shared_tools)
 
-            # 3. Add other agents as tools based on the mode
-            is_manager = (agent_name == self.manager_agent.name)
+            extra_context = {"collaboration_mode": self.mode}
+            is_manager = (agent.name == self.manager_agent.name)
 
-            if self.mode == 'broadcast' or (self.mode == 'manager_delegation' and is_manager):
-                # In broadcast mode, all agents, or in delegation mode, the manager, can call other agents
+            if self.mode == 'round_robin':
+                extra_context["mode_description"] = "You are part of a sequential pipeline. Receive input, perform your specific task, and then use 'end_task' with a clear 'final_answer' for the next agent."
+                prev_agent = self.agent_sequence[i-1].name if i > 0 else "the initial user input"
+                next_agent = self.agent_sequence[i+1].name if i < len(self.agent_sequence) - 1 else "the final output"
+                extra_context["position_in_chain"] = f"You will receive input from '{prev_agent}' and your output will be passed to '{next_agent}'."
+            
+            elif self.mode == 'manager_delegation':
+                if is_manager:
+                    extra_context["mode_description"] = "You are the manager. Your role is to break down the main task and delegate sub-tasks to the expert agents in your team. You are the only one who can call other agents."
+                else:
+                    extra_context["mode_description"] = "You are an expert agent. You must wait for instructions from your manager and execute the tasks they assign to you."
+                
+                if is_manager:
+                    for other_name, other_agent_as_tool in all_agents_as_tools.items():
+                        if agent.name != other_name:
+                            final_toolset.append(other_agent_as_tool)
+
+            elif self.mode == 'broadcast':
                 for other_name, other_agent_as_tool in all_agents_as_tools.items():
-                    if agent_name != other_name:
+                    if agent.name != other_name:
                         final_toolset.append(other_agent_as_tool)
             
-            # 4. Update the agent's configuration
-            agent._configure_with_tools(final_toolset)
+            agent._configure_with_tools(final_toolset, extra_context=extra_context)
 
     def run(self, stream: bool = False, **kwargs) -> Union[str, Iterator[Event]]:
         """
         Runs the entire Group to perform a task.
-        The task will first be passed to the manager Agent.
+        The execution flow depends on the group's mode.
 
         Args:
             stream (bool): If True, returns an event generator for real-time output.
                            If False, blocks until the task is complete and returns the final string.
-            **kwargs: Input parameters required to start the manager Agent.
+            **kwargs: Input parameters required to start the group task.
 
         Returns:
             Union[str, Iterator[Event]]: The final result or the event stream.
         """
-        if stream:
-            return self._run_stream(**kwargs)
+        resume_run = self._should_resume
+        if resume_run:
+            self._should_resume = False # Reset after use
+
+        if self.mode == 'round_robin':
+            runner = self._run_stream_round_robin
         else:
-            # For non-streaming, directly call the manager's non-streaming run method
-            return self.manager_agent.run(stream=False, **kwargs)
+            runner = self._run_stream_manager_based
+
+        if stream:
+            return runner(resume=resume_run, **kwargs)
+        else:
+            final_answer = ""
+            for event in runner(resume=resume_run, **kwargs):
+                if event.type == "end" and event.source == f"Group:{self.name}":
+                    final_answer = event.payload.get("result", "")
+            return final_answer
 
     def save_state(self, path: str):
         """Saves the state of the entire group to a file.
@@ -139,26 +169,60 @@ class Group:
         for agent_name, agent_state in group_state.items():
             if agent_name in self.agents:
                 self.agents[agent_name].set_state(agent_state)
-
-    def _run_stream(self, **kwargs) -> Iterator[Event]:
-        """Runs the main loop of the Group as an event generator."""
         
-        # 1. Signal the start of the Group
-        yield Event(f"Group:{self.name}", "start", {"manager": self.manager_agent.name, "input": kwargs})
+        self._should_resume = True
 
-        # 2. Get and start the manager Agent's event stream
-        manager_stream = self.manager_agent.run(stream=True, **kwargs)
+    def _run_stream_round_robin(self, resume: bool = False, **kwargs) -> Iterator[Event]:
+        """Runs the group in a sequential, round-robin fashion."""
+        if resume:
+            yield Event(f"Group:{self.name}", "resume", {"mode": "round_robin"})
+        else:
+            yield Event(f"Group:{self.name}", "start", {"mode": "round_robin", "input": kwargs})
+
+        current_input = kwargs
+        final_result = f"Group '{self.name}' finished round-robin without a clear final answer."
+
+        for i, agent in enumerate(self.agent_sequence):
+            yield Event(f"Group:{self.name}", "step", {"agent_name": agent.name, "step": i + 1})
+            
+            # The first agent in a new run gets the kwargs, subsequent agents get the output of the previous one.
+            # In a resumed run, we assume the flow continues and don't re-inject kwargs.
+            agent_input = current_input if i == 0 and not resume else {"input": final_result}
+            
+            agent_stream = agent.run(stream=True, resume=resume, **agent_input)
+            
+            agent_final_answer = None
+            for event in agent_stream:
+                yield event
+                if event.source == f"Agent:{agent.name}" and event.type == "end":
+                    agent_final_answer = event.payload.get("final_answer")
+            
+            if agent_final_answer is None:
+                error_msg = f"Agent '{agent.name}' did not provide a final_answer in round-robin step {i+1}."
+                yield Event(f"Group:{self.name}", "error", {"message": error_msg})
+                final_result = error_msg
+                break
+
+            current_input = {"input": agent_final_answer}
+            final_result = agent_final_answer
+
+        yield Event(f"Group:{self.name}", "end", {"result": final_result})
+
+    def _run_stream_manager_based(self, resume: bool = False, **kwargs) -> Iterator[Event]:
+        """Runs the main loop for manager-based modes (broadcast, manager_delegation)."""
+        if resume:
+            yield Event(f"Group:{self.name}", "resume", {"manager": self.manager_agent.name})
+        else:
+            yield Event(f"Group:{self.name}", "start", {"manager": self.manager_agent.name, "input": kwargs})
+
+        manager_stream = self.manager_agent.run(stream=True, resume=resume, **kwargs)
         
         final_result = f"Group '{self.name}' finished without a clear final answer."
 
-        # 3. Iterate through the manager's stream and pass all events (including those from sub-agents it calls) out in real-time
         for event in manager_stream:
-            # 4. Capture the manager Agent's own end signal to get the final result
             if event.source == f"Agent:{self.manager_agent.name}" and event.type == "end":
                 final_result = event.payload.get("final_answer", final_result)
             
-            # 5. Forward all events (regardless of source) directly
             yield event
         
-        # 6. After all processes are finished, signal the end of the Group
         yield Event(f"Group:{self.name}", "end", {"result": final_result})

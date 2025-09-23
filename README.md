@@ -10,9 +10,11 @@ Agenticle is a lightweight, event-driven Python framework for building and orche
 - **Simple Tool Integration**: Easily wrap any Python function into a `Tool` that agents can use.
 - **External Tool Integration (MCP)**: Connect to external, language-agnostic tool servers via the Model Context Protocol.
 - **Collaborative Groups**: Orchestrate multiple agents in a `Group`, enabling them to delegate tasks to each other.
-- **Flexible Communication Patterns**: Control how agents interact within a group using modes like `broadcast` or `manager_delegation`.
+- **Flexible Communication Patterns**: Control how agents interact within a group using modes like `broadcast`, `manager_delegation`, or the sequential `round_robin`.
+- **Shared Workspace**: Provide a sandboxed file system (`Workspace`) to a group, allowing agents to collaborate by reading and writing files.
+- **State Management**: Save and load the state of an entire agent group, enabling long-running tasks to be paused and resumed.
 - **Event-Driven & Streamable**: The entire execution process is a stream of `Event` objects, providing full transparency and making it easy to build real-time UIs and logs.
-- **Prompt Templating**: Customize agent behavior using Jinja2 templates for system prompts.
+- **Dynamic Prompt Templating**: Customize agent behavior using Jinja2 templates for system prompts, with the ability to inject contextual information from the group.
 
 ## Installation
 
@@ -164,6 +166,52 @@ A `Group` coordinates a list of `Agent` instances. Key parameters:
 - `mode`:
     - `'broadcast'` (default): Every agent can call every other agent in the group.
     - `'manager_delegation'`: Only the manager agent can call other agents. Specialist agents can only use their own tools and the shared tools.
+    - `'round_robin'`: Agents are executed sequentially in the order they are provided. The output of one agent becomes the input for the next, forming a processing pipeline.
+- `workspace`: An optional `Workspace` instance or a file path to create a shared directory for all agents in the group.
+
+### Workspace and State Management
+
+Agenticle provides powerful features for managing state and shared resources, which are crucial for complex, long-running tasks.
+
+#### Shared Workspace
+
+You can create a `Group` with a `Workspace`, which is a sandboxed directory where all agents in that group can read and write files. This enables collaboration through a shared file system.
+
+```python
+from agenticle import Group, Workspace
+
+# Create a workspace in a specific directory, or leave empty for a temporary one
+my_workspace = Workspace(path="./my_shared_work_dir")
+
+# Provide the workspace to the group
+my_group = Group(
+    name="File_Workers",
+    agents=[reader_agent, writer_agent],
+    workspace=my_workspace
+)
+# Now, both reader_agent and writer_agent can use tools like
+# read_file('data.txt') and write_file('result.txt') within the workspace.
+```
+
+#### Saving and Loading State
+
+For tasks that might be interrupted or need to be resumed later, you can save the entire state of a `Group` (including the conversation history of every agent) to a file and load it back later.
+
+```python
+# Assume 'travel_agency' is a running Group
+# ... some interactions happen ...
+
+# Save the current state
+travel_agency.save_state("travel_agency_session.json")
+
+# Later, you can restore the group to its previous state
+# First, create the group with the same configuration
+restored_agency = Group(...) 
+# Then, load the state
+restored_agency.load_state("travel_agency_session.json")
+
+# The group can now continue the task from where it left off.
+```
 
 ## Understanding the Event Stream
 
@@ -173,6 +221,8 @@ Each `Event` has a `source` (e.g., `Agent:Weather_Specialist`), a `type`, and a 
 
 -   **`start`**: Fired once when the agent's task begins.
     -   *Payload*: The initial input parameters given to the agent.
+-   **`resume`**: Fired instead of `start` when a `Group` or `Agent` continues execution from a loaded state.
+    -   *Payload*: Contextual information about the resumption, like `history_length`.
 -   **`step`**: Marks the beginning of a new "Think-Act" cycle.
     -   *Payload*: Contains the `current_step` number.
 -   **`reasoning_stream`**: A continuous stream of the agent's thought process as it decides what to do next.
@@ -229,6 +279,7 @@ When creating a custom prompt, you can use the following Jinja2 variables, which
 -   `{{ plain_tools }}`: A list of standard `Tool` objects available to the agent. These are regular Python functions.
 -   `{{ agent_tools }}`: A list of tools that are actually other agents. This allows you to show them differently in the prompt, for instance, as "Expert Agents".
 -   `{{ tools }}`: The complete list of all tools (both `plain_tools` and `agent_tools`).
+-   **Custom Context Variables**: Any extra context passed from a `Group` (e.g., `collaboration_mode`, `mode_description`) can be accessed in the template. This allows for highly adaptive agent behavior based on the collaboration strategy.
 
 You can iterate over these tool lists in your template to dynamically display the agent's capabilities, like this:
 

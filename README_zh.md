@@ -10,9 +10,11 @@ Agenticle 是一个轻量级的、事件驱动的 Python 框架，用于构建�
 - **简单的工具集成**: 轻松将任何 Python 函数包装成一个智能体可以使用的 `Tool`。
 - **外部工具集成 (MCP)**: 通过模型上下文协议 (Model Context Protocol) 连接到外部的、语言无关的工具服务器。
 - **协作群组**: 在一个 `Group` 中编排多个智能体，使它们能够相互委派任务。
-- **灵活的通信模式**: 使用 `broadcast` 或 `manager_delegation` 等模式控制智能体在群组内的交互方式。
+- **灵活的通信模式**: 使用 `broadcast`、`manager_delegation` 或序列化的 `round_robin` 等模式控制智能体在群组内的交互方式。
+- **共享工作空间**: 为群组提供一个沙盒化的文件系统 (`Workspace`)，允许智能体通过读写文件进行协作。
+- **状态管理**: 保存和加载整个智能体群组的状态，使得长时任务可以被暂停和恢复。
 - **事件驱动与可流式处理**: 整个执行过程是一个 `Event` 对象流，提供了完全的透明度，并使得构建实时用户界面和日志变得容易。
-- **提示词模板**: 使用 Jinja2 模板为系统提示词定制智能体行为。
+- **动态提示词模板**: 使用 Jinja2 模板为系统提示词定制智能体行为，并能够从群组注入上下文信息。
 
 ## 安装
 
@@ -164,6 +166,52 @@ remote_tool_agent.run("从数据库中获取最近 5 条用户记录。")
 - `mode`:
     - `'broadcast'` (默认): 群组中的每个智能体都可以调用其他任何智能体。
     - `'manager_delegation'`: 只有管理者智能体可以调用其他智能体。专员智能体只能使用自己的工具和共享工具。
+    - `'round_robin'`: 智能体按照提供的顺序依次执行。一个智能体的输出成为下一个智能体的输入，形成一个处理流水线。
+- `workspace`: 一个可选的 `Workspace` 实例或文件路径，用于为群组中的所有智能体创建一个共享目录。
+
+### 工作空间与状态管理
+
+Agenticle 提供了强大的功能来管理状态和共享资源，这对于复杂的、长时间运行的任务至关重要。
+
+#### 共享工作空间
+
+您可以创建一个带有 `Workspace` 的 `Group`，这是一个沙盒化的目录，该群组中的所有智能体都可以在其中读写文件。这使得通过共享文件系统进行协作成为可能。
+
+```python
+from agenticle import Group, Workspace
+
+# 在特定目录中创建一个工作空间，或留空以使用临时目录
+my_workspace = Workspace(path="./my_shared_work_dir")
+
+# 将工作空间提供给群组
+my_group = Group(
+    name="文件工作组",
+    agents=[reader_agent, writer_agent],
+    workspace=my_workspace
+)
+# 现在，reader_agent 和 writer_agent 都可以使用像
+# read_file('data.txt') 和 write_file('result.txt') 这样的工具在工作空间内操作。
+```
+
+#### 保存与加载状态
+
+对于可能被中断或需要稍后恢复的任务，您可以将 `Group` 的整个状态（包括每个智能体的对话历史）保存到一个文件，并在之后加载回来。
+
+```python
+# 假设 'travel_agency' 是一个正在运行的 Group
+# ... 发生了一些交互 ...
+
+# 保存当前状态
+travel_agency.save_state("travel_agency_session.json")
+
+# 稍后，您可以将群组恢复到之前的状态
+# 首先，使用相同的配置创建群组
+restored_agency = Group(...) 
+# 然后，加载状态
+restored_agency.load_state("travel_agency_session.json")
+
+# 群组现在可以从它离开的地方继续执行任务。
+```
 
 ## 理解事件流
 
@@ -173,6 +221,8 @@ remote_tool_agent.run("从数据库中获取最近 5 条用户记录。")
 
 -   **`start`**: 当智能体任务开始时触发一次。
     -   *Payload*: 传递给智能体的初始输入参数。
+-   **`resume`**: 当 `Group` 或 `Agent` 从加载的状态继续执行时，会触发此事件以代替 `start`。
+    -   *Payload*: 关于恢复的上下文信息，例如 `history_length`。
 -   **`step`**: 标志着一个新的“思考-行动”循环的开始。
     -   *Payload*: 包含当前步骤编号 `current_step`。
 -   **`reasoning_stream`**: 智能体在决定下一步做什么时的思考过程的连续流。
@@ -229,6 +279,7 @@ custom_agent = Agent(
 -   `{{ plain_tools }}`: 对智能体可用的标准 `Tool` 对象列表。这些是常规的 Python 函数。
 -   `{{ agent_tools }}`: 实际上是其他智能体的工具列表。这允许您在提示词中以不同的方式显示它们，例如作为“专家智能体”。
 -   `{{ tools }}`: 所有工具的完整列表（包括 `plain_tools` 和 `agent_tools`）。
+-   **自定义上下文变量**: 从 `Group` 传递的任何额外上下文（例如 `collaboration_mode`, `mode_description`）都可以在模板中访问。这允许基于协作策略实现高度自适应的智能体行为。
 
 您可以在模板中遍历这些工具列表，以动态显示智能体的能力，如下所示：
 

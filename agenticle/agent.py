@@ -60,11 +60,12 @@ class Agent:
         
         self.history: List[Dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
     
-    def _configure_with_tools(self, tools: List[Tool]):
-        """Reconfigures the agent with a given list of tools.
+    def _configure_with_tools(self, tools: List[Tool], extra_context: Optional[Dict[str, Any]] = None):
+        """Reconfigures the agent with a given list of tools and extra context.
 
         Args:
             tools (List[Tool]): The new list of tools to configure the agent with.
+            extra_context (Optional[Dict[str, Any]]): Extra data to pass to the prompt template.
         """
         self.tools = {tool.name: tool for tool in tools}
         self.tools["end_task"] = EndTaskTool() # Make sure end_task is always present
@@ -72,17 +73,19 @@ class Agent:
         # Regenerate API tools and system prompt
         self._api_tools = [t.info for t in self.tools.values()]
         self.system_prompt = self._generate_system_prompt_from_template(
-            getattr(self, '_prompt_template_path', None)
+            getattr(self, '_prompt_template_path', None),
+            extra_context=extra_context
         )
         self.reset() # Reset history to apply new system prompt
 
 
-    def _generate_system_prompt_from_template(self, template_path: Optional[str] = None) -> str:
+    def _generate_system_prompt_from_template(self, template_path: Optional[str] = None, extra_context: Optional[Dict[str, Any]] = None) -> str:
         """Loads and renders the system prompt from a Jinja2 template file.
 
         Args:
             template_path (Optional[str]): The path to the Jinja2 template file. 
                                            If None, a default path is used.
+            extra_context (Optional[Dict[str, Any]]): Extra data to be injected into the template.
 
         Returns:
             str: The rendered system prompt.
@@ -129,6 +132,9 @@ class Agent:
             "target_language": self.target_lang
         }
         
+        if extra_context:
+            template_data.update(extra_context)
+        
         # Render the template
         return template.render(template_data)
 
@@ -153,27 +159,29 @@ class Agent:
         except Exception as e:
             return f"Error executing tool '{tool_name}': {e}"
 
-    def run(self, stream: bool = False, **kwargs) -> Union[str, Iterator[Event]]:
+    def run(self, stream: bool = False, resume: bool = False, **kwargs) -> Union[str, Iterator[Event]]:
         """Runs the main loop of the Agent.
 
         Args:
             stream (bool): If True, returns an event generator for real-time output.
                            If False, blocks until the task is complete and returns the final string.
+            resume (bool): If True, continues from the existing history instead of resetting.
             **kwargs: Input parameters required to start the Agent.
 
         Returns:
             Union[str, Iterator[Event]]: The final result or the event stream.
         """
         if stream:
-            return self._run_stream(**kwargs)
+            return self._run_stream(resume=resume, **kwargs)
         else:
             # For non-streaming, we can simulate a simple event handler internally
             final_answer = ""
-            for event in self._run_stream(**kwargs):
+            for event in self._run_stream(resume=resume, **kwargs):
                 if event.type == "end":
                     final_answer = event.payload.get("final_answer", "")
             return final_answer
-    def _run_stream(self, **kwargs) -> Iterator[Event]:
+
+    def _run_stream(self, resume: bool = False, **kwargs) -> Iterator[Event]:
         """Runs the main loop of the Agent as an event generator.
 
         This is the core method that drives the agent's think-act cycle. It
@@ -181,22 +189,26 @@ class Agent:
         events to report its progress.
 
         Args:
+            resume (bool): If True, continues from the existing history.
             **kwargs: The input parameters for the task.
 
         Yields:
             Iterator[Event]: A stream of events representing the agent's activity.
         """
-        # Reset history for a new run
-        self.reset()
-        
-        # 1. Construct initial input and yield start event
-        initial_prompt = (
-            "Task started. Here are your input parameters:\n"
-            + json.dumps(kwargs, indent=2)
-            + "\nNow, begin your work."
-        )
-        self.history.append({"role": "user", "content": initial_prompt})
-        yield Event(f"Agent:{self.name}", "start", kwargs)
+        # Only reset history if it's a new run
+        if not resume:
+            self.reset()
+            # 1. Construct initial input and yield start event
+            initial_prompt = (
+                "Task started. Here are your input parameters:\n"
+                + json.dumps(kwargs, indent=2)
+                + "\nNow, begin your work."
+            )
+            self.history.append({"role": "user", "content": initial_prompt})
+            yield Event(f"Agent:{self.name}", "start", kwargs)
+        else:
+            # If resuming, just yield a resume event
+            yield Event(f"Agent:{self.name}", "resume", {"history_length": len(self.history)})
         # 2. "Think-Act" loop
         for step in range(self.max_steps):
             yield Event(f"Agent:{self.name}", "step", {"current_step": step + 1})
@@ -307,7 +319,11 @@ class Agent:
                 continue
             else: # If the LLM replies directly without calling a tool
                 yield Event(f"Agent:{self.name}", "thinking", {"content": full_response_content})
-                # We force it to end with end_task, so continue the loop
+                # If the model responds directly, prompt it to use end_task to formalize the completion.
+                self.history.append({
+                    "role": "user",
+                    "content": "You have provided a direct answer. If this is the final answer, please call the `end_task` tool to properly conclude the task. Do not add any commentary."
+                })
                 continue
         # If the loop finishes without completion
         final_message = f"Error: Agent '{self.name}' failed to complete the task within {self.max_steps} steps."
