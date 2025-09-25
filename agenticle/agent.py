@@ -246,8 +246,6 @@ class Agent:
             full_response_content = ""
             full_reasoning_content = ""
             tool_calls_in_progress = []
-
-            opt_is_thinking = True
             
             if self.optimize_tool_call:
                 parser = IncrementalXmlParser(root_tag="response")
@@ -276,8 +274,7 @@ class Agent:
                         tool_calls_in_progress[-1]["function"]["arguments"] += args_chunk
                 
                 def handle_root_text(text_chunk):
-                    if not opt_is_thinking:
-                        yield Event(f"Agent:{self.name}", "content_stream", {"content": text_chunk})
+                    yield Event(f"Agent:{self.name}", "content_stream", {"content": text_chunk})
 
                 parser.register_streaming_callback("tool_name", handle_tool_name)
                 parser.register_streaming_callback("parameter", handle_tool_args)
