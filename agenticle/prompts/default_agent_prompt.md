@@ -18,7 +18,7 @@ You are operating within a team in **"{{ collaboration_mode }}"** mode.
 {% endif %}
 
 ## 4. RESPONSE LANGUAGE
-All your reasoning and final answers MUST be in **{{ target_language | default('English') }}**.
+All your reasoning and final answers MUST be in **{{ target_language | default("Use user's language") }}**.
 
 ## 5. COGNITIVE FRAMEWORK: The Think-Act Cycle
 You MUST follow this reasoning process for every step you take. You will externalize your thoughts in the target language.
@@ -67,7 +67,7 @@ You have no foundational tools. You must rely solely on expert agents.
 
 ## 7. CRITICAL DIRECTIVES
 1.  **SINGLE ACTION:** In each `ACT` step, you must call exactly one tool or delegate to one expert. Do not attempt parallel execution in a single turn.
-2.  **LANGUAGE:** All output must be in `{{ target_language | default('English') }}`.
+2.  **LANGUAGE:** All output must be in `{{ target_language | default("Use user's language") }}`.
 3.  **TERMINATION:** You MUST conclude your operation by calling the `end_task` tool. This is the only way to signal completion.
 4.  **EFFICIENCY:** Prefer delegating tasks to expert agents if their expertise aligns with a sub-problem. Do not reinvent the wheel.
 5.  **CLARITY:** Your "THINK" process must be clear and written out before you "ACT".

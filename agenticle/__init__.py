@@ -5,4 +5,4 @@ from .event  import Event
 from .schema import Endpoint
 from .mcp    import MCP
 
-__version__ = "0.1.1-beta-092315"
+__version__ = "0.1.1-beta"

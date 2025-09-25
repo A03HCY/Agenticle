@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional, Union, Iterator
 from .schema import Endpoint
 from .tool   import Tool, EndTaskTool
 from .event  import Event
+from .utils.parser import IncrementalXmlParser
 
 class Agent:
     def __init__(
@@ -19,7 +20,8 @@ class Agent:
         model_id: str,
         prompt_template_path: Optional[str] = None,
         target_lang:str = 'English',
-        max_steps: int = 10
+        max_steps: int = 10,
+        optimize_tool_call: bool = False
     ):
         """Initializes the Agent.
 
@@ -39,6 +41,7 @@ class Agent:
         self.input_parameters = input_parameters
         self.model_id = model_id
         self.target_lang = target_lang
+        self.optimize_tool_call = optimize_tool_call
 
         os.environ['OPENAI_API_KEY'] = endpoint.api_key
         
@@ -136,7 +139,20 @@ class Agent:
             template_data.update(extra_context)
         
         # Render the template
-        return template.render(template_data)
+        base_prompt = template.render(template_data)
+
+        if self.optimize_tool_call:
+            # If tool call optimization is enabled, append the tool call prompt
+            tool_call_prompt_path = os.path.join(os.path.dirname(template_path), 'tool_call.md')
+            try:
+                with open(tool_call_prompt_path, 'r', encoding='utf-8') as f:
+                    tool_call_prompt = f.read()
+                return base_prompt + "\n" + tool_call_prompt
+            except FileNotFoundError:
+                # Handle case where tool_call.md is not found, maybe log a warning
+                pass
+        
+        return base_prompt
 
     def _execute_tool(self, tool_call: Dict[str, Any]) -> Any:
         """Executes a tool call.
@@ -212,66 +228,125 @@ class Agent:
         # 2. "Think-Act" loop
         for step in range(self.max_steps):
             yield Event(f"Agent:{self.name}", "step", {"current_step": step + 1})
-            # 3. Think: Call LLM in streaming mode
-            response_stream = self._client.chat.completions.create(
-                model=self.model_id,
-                messages=self.history,
-                tools=self._api_tools,
-                tool_choice="auto",
-                stream=True
-            )
+
+            # 3. Think: Call LLM
+            llm_params = {
+                "model": self.model_id,
+                "messages": self.history,
+                "stream": True
+            }
+            if not self.optimize_tool_call:
+                llm_params["tools"] = self._api_tools
+                llm_params["tool_choice"] = "auto"
+            
+            response_stream = self._client.chat.completions.create(**llm_params)
+
             # 4. Reassemble response from the stream
             full_response_content = ""
             full_reasoning_content = ""
-            tool_calls_in_progress = [] # Used to assemble tool calls
-            for chunk in response_stream:
-                try:
-                    delta = chunk.choices[0].delta
-                except:
-                    continue
+            tool_calls_in_progress = []
+            
+            if self.optimize_tool_call:
+                parser = IncrementalXmlParser(root_tag="response")
+                in_tool_call = False
+
+                def on_enter(tag, attrs):
+                    nonlocal in_tool_call
+                    if tag == 'tool_call':
+                        in_tool_call = True
+                        tool_calls_in_progress.append({"function": {"name": "", "arguments": ""}})
+
+                def on_exit(tag):
+                    nonlocal in_tool_call
+                    if tag == 'tool_call':
+                        in_tool_call = False
+
+                parser.on_enter_tag = on_enter
+                parser.on_exit_tag = on_exit
                 
-                # a. Handle streaming text content (thought process or final answer)
-                if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
-                    full_reasoning_content += delta.reasoning_content
-                    yield Event(f"Agent:{self.name}", "reasoning_stream", {"content": delta.reasoning_content})
+                def handle_tool_name(name_chunk):
+                    if tool_calls_in_progress:
+                        tool_calls_in_progress[-1]["function"]["name"] += name_chunk
+
+                def handle_tool_args(args_chunk):
+                    if tool_calls_in_progress:
+                        tool_calls_in_progress[-1]["function"]["arguments"] += args_chunk
                 
-                if delta.content:
-                    full_response_content += delta.content
-                    yield Event(f"Agent:{self.name}", "content_stream", {"content": delta.content})
-                # b. Handle streaming tool calls
-                if delta.tool_calls:
-                    for tool_call_chunk in delta.tool_calls:
-                        # If it's a new tool call
-                        if tool_call_chunk.index >= len(tool_calls_in_progress):
-                            tool_calls_in_progress.append(tool_call_chunk.function)
-                        else: # Otherwise, accumulate arguments
-                            func = tool_calls_in_progress[tool_call_chunk.index]
+                def handle_root_text(text_chunk):
+                    yield Event(f"Agent:{self.name}", "content_stream", {"content": text_chunk})
+
+                parser.register_streaming_callback("tool_name", handle_tool_name)
+                parser.register_streaming_callback("parameter", handle_tool_args)
+                parser.register_streaming_callback(IncrementalXmlParser.ROOT, handle_root_text)
+
+                for chunk in response_stream:
+                    try:
+                        delta = chunk.choices[0].delta
+                    except:
+                        continue
+                    
+                    if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
+                        full_reasoning_content += delta.reasoning_content
+                        yield Event(f"Agent:{self.name}", "reasoning_stream", {"content": delta.reasoning_content})
+
+                    if delta and delta.content:
+                        full_response_content += delta.content
+                        parser.feed(delta.content.encode('utf-8'))
+                parser.close()
+
+            else: # Original OpenAI tools handling
+                for chunk in response_stream:
+                    try:
+                        delta = chunk.choices[0].delta
+                    except:
+                        continue
+                    
+                    if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
+                        full_reasoning_content += delta.reasoning_content
+                        yield Event(f"Agent:{self.name}", "reasoning_stream", {"content": delta.reasoning_content})
+
+                    if delta.content:
+                        full_response_content += delta.content
+                        yield Event(f"Agent:{self.name}", "content_stream", {"content": delta.content})
+                    
+                    if delta.tool_calls:
+                        for tool_call_chunk in delta.tool_calls:
+                            if tool_call_chunk.index >= len(tool_calls_in_progress):
+                                tool_calls_in_progress.append({"id": f"call_{tool_call_chunk.index}", "type": "function", "function": {"name": "", "arguments": ""}})
+                            
+                            func = tool_calls_in_progress[tool_call_chunk.index]['function']
                             if tool_call_chunk.function.name:
-                                func.name = (func.name or "") + tool_call_chunk.function.name
+                                func['name'] += tool_call_chunk.function.name
                             if tool_call_chunk.function.arguments:
-                                func.arguments = (func.arguments or "") + tool_call_chunk.function.arguments
-                        # Yield the tool call construction process in real-time
-                        yield Event(f"Agent:{self.name}", "tool_call_stream", {"index": tool_call_chunk.index, "delta": tool_call_chunk.function.dict()})
+                                func['arguments'] += tool_call_chunk.function.arguments
+                            
+                            yield Event(f"Agent:{self.name}", "tool_call_stream", {"index": tool_call_chunk.index, "delta": tool_call_chunk.function.dict()})
+
             # Assemble the complete message to add to history
             assembled_message = {"role": "assistant"}
             if full_response_content:
                 assembled_message["content"] = full_response_content
+            
             if tool_calls_in_progress:
-                # Clean and validate tool calls
                 valid_tool_calls = []
-                for i, func in enumerate(tool_calls_in_progress):
-                    # Ensure both name and arguments exist
-                    if not func.name or not func.arguments:
-                        continue
-                    # Try to parse arguments, discard if it fails
-                    try:
-                        json.loads(func.arguments)
-                        valid_tool_calls.append({"id": f"call_{i}", "type": "function", "function": func.dict()})
-                    except json.JSONDecodeError:
-                        continue # Discard invalid tool call
+                for i, tc in enumerate(tool_calls_in_progress):
+                    func = tc.get('function', {})
+                    if func.get('name') and func.get('arguments'):
+                        try:
+                            # Validate JSON arguments
+                            json.loads(func['arguments'])
+                            valid_tool_calls.append({
+                                "id": tc.get("id", f"call_{i}"),
+                                "type": "function",
+                                "function": func
+                            })
+                        except json.JSONDecodeError:
+                            continue # Skip invalid tool calls
                 
                 if valid_tool_calls:
                     assembled_message["tool_calls"] = valid_tool_calls
+                    if not self.optimize_tool_call:
+                         assembled_message["content"] = None
             
             self.history.append(assembled_message)
             # 5. Decision and Action
@@ -376,7 +451,8 @@ class Agent:
                 tools=self.original_tools, # Ensure isolation
                 endpoint=self.endpoint,
                 model_id=self.model_id,
-                max_steps=self.max_steps
+                max_steps=self.max_steps,
+                optimize_tool_call=self.optimize_tool_call
             )
             return agent_instance.run(stream=stream, **kwargs)
 
