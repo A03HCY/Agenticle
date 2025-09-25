@@ -54,7 +54,8 @@ def main():
         input_parameters=[{"name": "location"}],
         tools=[Tool(get_current_weather)],
         endpoint=openai_endpoint,
-        model_id=model_id
+        model_id=model_id,
+        optimize_tool_call=True
     )
 
     search_agent = Agent(
@@ -63,7 +64,8 @@ def main():
         input_parameters=[{"name": "location"}],
         tools=[Tool(find_tourist_attractions)],
         endpoint=openai_endpoint,
-        model_id=model_id
+        model_id=model_id,
+        optimize_tool_call=True
     )
 
     # --- 3. 创建管理者 Agent ---
@@ -74,7 +76,8 @@ def main():
         input_parameters=[{"name": "user_request"}],
         tools=[], # No direct tools, it delegates
         endpoint=openai_endpoint,
-        model_id=model_id
+        model_id=model_id,
+        optimize_tool_call=True
     )
 
     # --- 4. 组建团队 (Group) ---

@@ -35,6 +35,7 @@ class Agent:
             prompt_template_path (Optional[str]): The path to a Jinja2 template for the system prompt.
             target_lang (str): The target language for the agent's responses.
             max_steps (int): The maximum number of steps the agent can take.
+            optimize_tool_call (bool): If True, optimizes the tool-calling process by using a custom XML-based prompt mechanism instead of the native API tool-calling feature. This can be useful for models with weaker native tool-calling capabilities.
         """
         self.name = name
         self.description = description
@@ -245,6 +246,8 @@ class Agent:
             full_response_content = ""
             full_reasoning_content = ""
             tool_calls_in_progress = []
+
+            opt_is_thinking = True
             
             if self.optimize_tool_call:
                 parser = IncrementalXmlParser(root_tag="response")
@@ -273,7 +276,8 @@ class Agent:
                         tool_calls_in_progress[-1]["function"]["arguments"] += args_chunk
                 
                 def handle_root_text(text_chunk):
-                    yield Event(f"Agent:{self.name}", "content_stream", {"content": text_chunk})
+                    if not opt_is_thinking:
+                        yield Event(f"Agent:{self.name}", "content_stream", {"content": text_chunk})
 
                 parser.register_streaming_callback("tool_name", handle_tool_name)
                 parser.register_streaming_callback("parameter", handle_tool_args)
@@ -290,8 +294,9 @@ class Agent:
                         yield Event(f"Agent:{self.name}", "reasoning_stream", {"content": delta.reasoning_content})
 
                     if delta and delta.content:
+                        opt_is_thinking = False
                         full_response_content += delta.content
-                        parser.feed(delta.content.encode('utf-8'))
+                        parser.feed(delta.content)
                 parser.close()
 
             else: # Original OpenAI tools handling

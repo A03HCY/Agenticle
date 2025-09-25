@@ -156,6 +156,7 @@ The `Agent` is the fundamental actor in the system. It is initialized with:
 - `input_parameters`: The schema for its main task input.
 - `tools`: A list of `Tool` objects it can use.
 - `endpoint` & `model_id`: Configuration for the LLM it should use.
+- `optimize_tool_call`: An optional boolean that, when set to `True`, uses a custom XML-based prompt mechanism for tool calls. This can improve reliability for models that have weaker native tool-calling capabilities.
 
 ### Group
 

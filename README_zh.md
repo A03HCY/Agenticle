@@ -156,6 +156,7 @@ remote_tool_agent.run("从数据库中获取最近 5 条用户记录。")
 - `input_parameters`: 其主要任务输入的模式（schema）。
 - `tools`: 它可以使用的 `Tool` 对象列表。
 - `endpoint` & `model_id`: 它应使用的大语言模型的配置。
+- `optimize_tool_call`: 一个可选的布尔值参数，当设置为 `True` 时，会使用一个自定义的、基于 XML 的提示词机制来进行工具调用。这对于原生工具调用能力较弱的模型可以提升其可靠性。
 
 ### Group
 
