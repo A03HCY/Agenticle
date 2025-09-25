@@ -176,7 +176,7 @@ class Agent:
         except Exception as e:
             return f"Error executing tool '{tool_name}': {e}"
 
-    def run(self, stream: bool = False, resume: bool = False, **kwargs) -> Union[str, Iterator[Event]]:
+    def run(self, stream: bool = True, resume: bool = False, **kwargs) -> Union[str, Iterator[Event]]:
         """Runs the main loop of the Agent.
 
         Args:
@@ -294,7 +294,6 @@ class Agent:
                         yield Event(f"Agent:{self.name}", "reasoning_stream", {"content": delta.reasoning_content})
 
                     if delta and delta.content:
-                        opt_is_thinking = False
                         full_response_content += delta.content
                         parser.feed(delta.content)
                 parser.close()
