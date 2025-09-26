@@ -60,6 +60,12 @@
             color: #444;
             margin-bottom: 5px;
         }
+        .event-type--decision { color: #0056b3; } /* Blue */
+        .event-type--tool_result { color: #555; } /* Dark Gray */
+        .event-type--end { color: #28a745; } /* Green */
+        .event-type--error { color: #dc3545; } /* Red */
+        .event-type--start, .event-type--step { color: #6f42c1; } /* Purple */
+
         .event-payload {
             background-color: #f8f9fa;
             border: 1px solid #dcdfe6;
@@ -77,7 +83,6 @@
     </style>
 </head>
 <body>
-    <h1>Agenticle Live Dashboard</h1>
     <div id="dashboard-container"></div>
 
     <script>
@@ -146,7 +151,7 @@
             }
             
             listItem.innerHTML = `
-                <div class="event-type">${title}</div>
+                <div class="event-type event-type--${eventData.type}">${title}</div>
                 <div class="event-payload">${payloadHtml}</div>
             `;
             agent.list.appendChild(listItem);
