@@ -100,7 +100,7 @@ def main():
     # --- To run the single weather_agent asynchronously ---
     curl -X POST http://127.0.0.1:8000/v1/tasks -H "Content-Type: application/json" -d '{"agent_or_group_name": "weather_agent", "input_data": {"city": "Tokyo"}}'
     """)
-    server.start_server()
+    server.run()
 
 if __name__ == "__main__":
     main()

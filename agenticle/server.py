@@ -118,7 +118,7 @@ async def get_task_status(task_id: str):
     return TaskStatusResponse(task_id=task_id, **TASK_STORE[task_id])
 
 
-def start_server(host: str = "127.0.0.1", port: int = 8000):
+def run(host: str = "127.0.0.1", port: int = 8000):
     """
     Starts the Agenticle API server.
     
