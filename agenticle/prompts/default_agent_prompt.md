@@ -66,7 +66,7 @@ You have no foundational tools. You must rely solely on expert agents.
 
 
 ## 7. CRITICAL DIRECTIVES
-1.  **SINGLE ACTION:** In each `ACT` step, you must call exactly one tool or delegate to one expert. Do not attempt parallel execution in a single turn.
+1.  **PARALLEL EXECUTION:** In a single `ACT` step, you can and should call multiple tools when it is logical to do so. The system will execute these calls in parallel to save time.
 2.  **LANGUAGE:** All output must be in `{{ target_language | default("Use user's language") }}`.
 3.  **TERMINATION:** You MUST conclude your operation by calling the `end_task` tool. This is the only way to signal completion.
 4.  **EFFICIENCY:** Prefer delegating tasks to expert agents if their expertise aligns with a sub-problem. Do not reinvent the wheel.

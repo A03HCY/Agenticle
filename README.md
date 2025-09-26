@@ -14,6 +14,7 @@ Agenticle is a lightweight, event-driven Python framework for building and orche
 - **Shared Workspace**: Provide a sandboxed file system (`Workspace`) to a group, allowing agents to collaborate by reading and writing files.
 - **State Management**: Save and load the state of an entire agent group, enabling long-running tasks to be paused and resumed.
 - **Event-Driven & Streamable**: The entire execution process is a stream of `Event` objects, providing full transparency and making it easy to build real-time UIs and logs.
+- **Parallel Tool Execution**: Agents can execute multiple tools concurrently in a single step, significantly speeding up tasks that involve multiple I/O-bound operations (e.g., API calls, file I/O).
 - **Dynamic Prompt Templating**: Customize agent behavior using Jinja2 templates for system prompts, with the ability to inject contextual information from the group.
 
 ## Installation
@@ -158,6 +159,8 @@ The `Agent` is the fundamental actor in the system. It is initialized with:
 - `endpoint` & `model_id`: Configuration for the LLM it should use.
 - `optimize_tool_call`: An optional boolean that, when set to `True`, uses a custom XML-based prompt mechanism for tool calls. This can improve reliability for models that have weaker native tool-calling capabilities.
 
+An `Agent` can also execute multiple tools in parallel if the LLM decides it's logical to do so in a single step.
+
 ### Group
 
 A `Group` coordinates a list of `Agent` instances. Key parameters:
@@ -234,6 +237,8 @@ Each `Event` has a `source` (e.g., `Agent:Weather_Specialist`), a `type`, and a 
     -   *Payload*: Contains the `tool_name` and `tool_args` for the call.
 -   **`tool_result`**: Fired after a tool has been executed.
     -   *Payload*: Contains the `tool_name` and the `output` returned by the tool.
+-   **`tool_completed`**: An internal event fired when a tool finishes execution in parallel mode. It is then processed to generate a `tool_result` event.
+    -   *Payload*: Contains `tool_call_id`, `tool_name`, and the final `output`.
 -   **`end`**: The final event, signaling that the task is complete.
     -   *Payload*: Contains the `final_answer` or an `error` message if the task failed.
 -   **`error`**: Fired if a critical error occurs that terminates the process.

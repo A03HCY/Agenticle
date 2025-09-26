@@ -1,12 +1,13 @@
 import os
 import json
 import jinja2
+import concurrent.futures
 from openai import OpenAI
 from typing import List, Dict, Any, Optional, Union, Iterator
 
 from .schema import Endpoint
 from .tool   import Tool, EndTaskTool
-from .event  import Event
+from .event  import Event, EventBroker
 from .utils.parser import IncrementalXmlParser
 
 class Agent:
@@ -352,46 +353,93 @@ class Agent:
             self.history.append(assembled_message)
             # 5. Decision and Action
             if "tool_calls" in assembled_message:
-                # Iterate through all tool calls
-                for tool_call_data in assembled_message["tool_calls"]:
-                    tool_name = tool_call_data['function']['name']
-                    
-                    # a. Special handling for end_task
-                    if tool_name == "end_task":
-                        task_result = json.loads(tool_call_data['function']['arguments'])
-                        yield Event(f"Agent:{self.name}", "end", task_result)
-                        return # End the generator
+                tool_calls = assembled_message["tool_calls"]
 
-                    # b. Execute regular tool or Agent
+                # Prioritize 'end_task': if it's present, run it exclusively.
+                end_task_call = next((tc for tc in tool_calls if tc['function']['name'] == 'end_task'), None)
+                if end_task_call:
+                    task_result = json.loads(end_task_call['function']['arguments'])
+                    yield Event(f"Agent:{self.name}", "end", task_result)
+                    return
+
+                # If there's only one tool call, execute it sequentially.
+                if len(tool_calls) == 1:
+                    tool_call_data = tool_calls[0]
+                    tool_name = tool_call_data['function']['name']
                     tool_args = json.loads(tool_call_data['function']['arguments'])
                     yield Event(f"Agent:{self.name}", "decision", {"tool_name": tool_name, "tool_args": tool_args})
                     
-                    tool_call_id = tool_call_data['id']
-                    
-                    # Execute the tool and handle possible event stream
                     execution_generator = self._execute_tool_from_dict(tool_call_data)
                     
                     tool_output = ""
-                    # If it's a sub-agent, forward its events in real-time
                     if isinstance(execution_generator, Iterator):
                         for sub_event in execution_generator:
-                            yield sub_event # Forward in real-time
-                            # Capture the sub-agent's final answer as tool output
-                            if sub_event.type == 'end' and sub_event.payload.get('final_answer'):
-                                tool_output = sub_event.payload['final_answer']
-                            if sub_event.type == 'end' and sub_event.payload.get('error'):
-                                tool_output = sub_event.payload['error']
-                    else: # If it's a normal tool
+                            yield sub_event
+                            if sub_event.type == 'end':
+                                tool_output = sub_event.payload.get('final_answer') or sub_event.payload.get('error', '')
+                    else:
                         tool_output = execution_generator
 
                     yield Event(f"Agent:{self.name}", "tool_result", {"tool_name": tool_name, "output": tool_output})
                     
                     self.history.append({
                         "role": "tool",
-                        "tool_call_id": tool_call_id,
+                        "tool_call_id": tool_call_data['id'],
                         "name": tool_name,
                         "content": str(tool_output)
                     })
+                else: # Multiple tool calls: execute in parallel
+                    event_broker = EventBroker()
+                    tool_results = {} # Store final outputs for history
+
+                    def tool_worker(tool_call_data: Dict, broker: EventBroker):
+                        tool_name = tool_call_data['function']['name']
+                        tool_args = json.loads(tool_call_data['function']['arguments'])
+                        broker.emit(f"Agent:{self.name}", "decision", {"tool_name": tool_name, "tool_args": tool_args})
+                        
+                        execution_generator = self._execute_tool_from_dict(tool_call_data)
+                        
+                        final_output = ""
+                        if isinstance(execution_generator, Iterator):
+                            for sub_event in execution_generator:
+                                broker.queue.put(sub_event)
+                                if sub_event.type == 'end':
+                                    final_output = sub_event.payload.get('final_answer') or sub_event.payload.get('error', '')
+                        else:
+                            final_output = execution_generator
+                        
+                        # Emit a special event to signal completion and carry the final result
+                        broker.emit(f"Agent:{self.name}", "tool_completed", {
+                            "tool_call_id": tool_call_data['id'],
+                            "tool_name": tool_name,
+                            "output": final_output
+                        })
+
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        for tool_call in tool_calls:
+                            executor.submit(tool_worker, tool_call, event_broker)
+                        
+                        completed_tools = 0
+                        while completed_tools < len(tool_calls):
+                            event = event_broker.queue.get()
+                            if event.type == "tool_completed":
+                                completed_tools += 1
+                                tool_results[event.payload['tool_call_id']] = event.payload
+                                # Yield the final tool_result event for this tool
+                                yield Event(f"Agent:{self.name}", "tool_result", {"tool_name": event.payload['tool_name'], "output": event.payload['output']})
+                            else:
+                                yield event # Forward sub-agent events in real-time
+                    
+                    # Append all tool results to history in a stable order
+                    for tool_call in tool_calls:
+                        result_payload = tool_results[tool_call['id']]
+                        self.history.append({
+                            "role": "tool",
+                            "tool_call_id": result_payload['tool_call_id'],
+                            "name": result_payload['tool_name'],
+                            "content": str(result_payload['output'])
+                        })
+
                 continue
             else: # If the LLM replies directly without calling a tool
                 yield Event(f"Agent:{self.name}", "thinking", {"content": full_response_content})
