@@ -18,7 +18,8 @@ class Tool:
         name: Optional[str] = None,
         description: Optional[str] = None,
         parameters: Optional[List[Dict[str, Any]]] = None,
-        is_agent_tool: bool = False
+        is_agent_tool: bool = False,
+        is_group_tool: bool = False
     ):
         """
         Creates a tool instance.
@@ -39,6 +40,7 @@ class Tool:
         self.description: str = description or analysis.get('docstring', 'No description provided.')
         self.parameters: List[Dict[str, Any]] = parameters or analysis.get('parameters', [])
         self.is_agent_tool = is_agent_tool
+        self.is_group_tool = is_group_tool
     
     @property
     def info(self) -> Dict[str, Any]:

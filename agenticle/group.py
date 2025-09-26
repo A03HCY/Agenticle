@@ -17,6 +17,7 @@ class Group:
         self,
         name: str,
         agents: List[Agent],
+        description: Optional[str] = None,
         manager_agent_name: Optional[str] = None,
         shared_tools: Optional[List[Tool]] = None,
         workspace: Optional[Union[str, Workspace]] = None,
@@ -27,6 +28,7 @@ class Group:
         Args:
             name (str): The name of the group.
             agents (List[Agent]): A list of Agent instances in the group.
+            description (Optional[str], optional): A description of the group's purpose.
             manager_agent_name (str, optional): The name of the designated manager Agent.
                                                 If not provided, the first Agent in the list is used.
             shared_tools (Optional[List[Tool]], optional): A list of tools shared by the group.
@@ -38,6 +40,7 @@ class Group:
                                   'voting': All Agents receive the same input and vote on a final answer from a given set of options.
         """
         self.name = name
+        self.description = description or f"A group of agents named {name}."
         self.agents: Dict[str, Agent] = {agent.name: agent for agent in agents}
         self.agent_sequence: List[Agent] = agents
         self.shared_tools = shared_tools or []
@@ -116,6 +119,33 @@ class Group:
                 extra_context["mode_description"] = "You are part of a voting panel. You will receive the same task as your peers. Perform the task to the best of your ability and provide a definitive final answer. Your answer will be compared with others to reach a consensus."
 
             agent._configure_with_tools(final_toolset, extra_context=extra_context)
+
+    def as_tool(self) -> Tool:
+        """Wraps the entire Group instance into a Tool, allowing it to be called by other agents."""
+        if not self.manager_agent:
+            raise ValueError("A manager agent must be defined to expose the group as a tool.")
+
+        # Dynamically create a wrapper function that calls the group's run method
+        def group_runner(stream: bool = True, **kwargs):
+            # Note: Unlike Agent.as_tool(), this does not create a new instance of the Group.
+            # The same group instance is reused. This means state can be preserved between calls
+            # if the group is not reset.
+            return self.run(stream=stream, **kwargs)
+
+        group_runner.__name__ = self.name
+        group_runner.__doc__ = self.description
+        
+        # Dynamically build the function signature based on the manager agent's input parameters
+        from inspect import Parameter, Signature
+        manager_input_params = self.manager_agent.input_parameters
+        params = [
+            Parameter(name=p['name'], kind=Parameter.POSITIONAL_OR_KEYWORD) 
+            for p in manager_input_params
+        ]
+        group_runner.__signature__ = Signature(params)
+
+        # Mark as an agent tool so it's displayed correctly in the prompt
+        return Tool(func=group_runner, is_agent_tool=True, is_group_tool=True)
 
     def run(self, stream: bool = True, retries: int = 0, **kwargs) -> Union[str, Iterator[Event]]:
         """

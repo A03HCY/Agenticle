@@ -368,6 +368,9 @@ class Agent:
                     tool_name = tool_call_data['function']['name']
                     tool_args = json.loads(tool_call_data['function']['arguments'])
                     yield Event(f"Agent:{self.name}", "decision", {"tool_name": tool_name, "tool_args": tool_args})
+
+                    tool_to_run = self.tools.get(tool_name)
+                    is_group = getattr(tool_to_run, 'is_group_tool', False)
                     
                     execution_generator = self._execute_tool_from_dict(tool_call_data)
                     
@@ -375,7 +378,15 @@ class Agent:
                     if isinstance(execution_generator, Iterator):
                         for sub_event in execution_generator:
                             yield sub_event
-                            if sub_event.type == 'end':
+                            
+                            is_end_event = sub_event.type == 'end'
+                            is_correct_source = sub_event.source == f"Group:{tool_name}"
+                            
+                            if is_group:
+                                if is_end_event and is_correct_source:
+                                    tool_output = sub_event.payload.get('result', '')
+                                    break
+                            elif is_end_event:
                                 tool_output = sub_event.payload.get('final_answer') or sub_event.payload.get('error', '')
                     else:
                         tool_output = execution_generator
@@ -396,6 +407,9 @@ class Agent:
                         tool_name = tool_call_data['function']['name']
                         tool_args = json.loads(tool_call_data['function']['arguments'])
                         broker.emit(f"Agent:{self.name}", "decision", {"tool_name": tool_name, "tool_args": tool_args})
+
+                        tool_to_run = self.tools.get(tool_name)
+                        is_group = getattr(tool_to_run, 'is_group_tool', False)
                         
                         execution_generator = self._execute_tool_from_dict(tool_call_data)
                         
@@ -403,7 +417,15 @@ class Agent:
                         if isinstance(execution_generator, Iterator):
                             for sub_event in execution_generator:
                                 broker.queue.put(sub_event)
-                                if sub_event.type == 'end':
+                                
+                                is_end_event = sub_event.type == 'end'
+                                is_correct_source = sub_event.source == f"Group:{tool_name}"
+                                
+                                if is_group:
+                                    if is_end_event and is_correct_source:
+                                        final_output = sub_event.payload.get('result', '')
+                                        break 
+                                elif is_end_event:
                                     final_output = sub_event.payload.get('final_answer') or sub_event.payload.get('error', '')
                         else:
                             final_output = execution_generator

@@ -46,17 +46,17 @@ You MUST follow this reasoning process for every step you take. You will externa
 ## 6. AVAILABLE RESOURCES
 You have two types of resources available: Foundational Tools for direct actions, and Expert Agents for delegating complex sub-tasks.
 
---- EXPERT AGENTS ---
-Your team consists of the following expert agents. Delegate complex tasks to them when their expertise matches the requirement.
+--- EXPERT AGENTS & TEAMS ---
+Your team consists of the following expert agents and teams. Delegate complex tasks to them when their expertise matches the requirement.
 {% if agent_tools %}
 {% for agent in agent_tools %}
 **- {{ agent.name }}({% for p in agent.parameters %}{{ p.name }}: {{ p.get('annotation', 'any')}}{% if not loop.last %}, {% endif %}{% endfor %})**
   *Expertise*: {{ agent.description | indent(4) }}
 {% endfor %}
 {% else %}
-You are working alone on this mission. No other expert agents are available.
+You are working alone on this mission. No other expert agents or teams are available.
 {% endif %}
---- END OF EXPERTS ---
+--- END OF EXPERTS & TEAMS ---
 
 --- FOUNDATIONAL TOOLS ---
 These are your direct action tools for performing specific, atomic tasks.
