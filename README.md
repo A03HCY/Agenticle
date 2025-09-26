@@ -279,6 +279,65 @@ Agenticle includes a built-in, real-time monitoring dashboard that visualizes th
 
 A complete, runnable example can be found in `examples/dashboard/main.py`.
 
+## RESTful API Server
+
+Agenticle includes a built-in FastAPI server that exposes a RESTful API for interacting with your agents and groups. This allows you to easily integrate Agenticle into larger applications, build custom user interfaces, or manage tasks programmatically.
+
+### API Features
+
+- **Asynchronous Task Execution**: Start long-running agent tasks and poll for their status and results.
+- **Real-Time Event Streaming**: Get a live feed of events from a running agent using Server-Sent Events (SSE).
+- **Dynamic Agent Registration**: Register any number of pre-configured agents or groups to make them available through the API.
+
+### How to Use
+
+1.  **Install API Dependencies**:
+    ```bash
+    pip install "agenticle[api]"
+    ```
+
+2.  **Create a Server Script**:
+    Create a Python script (e.g., `run_api.py`) to define, register, and run your agents.
+
+    ```python
+    # in run_api.py
+    from agenticle.agent import Agent
+    import agenticle.server as server
+
+    # 1. Define your agents and groups as usual
+    my_agent = Agent(...)
+
+    # 2. Register them with the server
+    server.register("my_agent_api_name", my_agent)
+
+    # 3. Start the server
+    if __name__ == "__main__":
+        server.start_server()
+    ```
+
+3.  **Run the Server**:
+    ```bash
+    python run_api.py
+    ```
+
+4.  **Interact with the API**:
+    You can now use any HTTP client to interact with the API.
+
+    -   **Stream a task**:
+        ```bash
+        curl -X POST http://127.0.0.1:8000/v1/tasks/stream -H "Content-Type: application/json" -d '{"agent_or_group_name": "my_agent_api_name", "input_data": {"param": "value"}}'
+        ```
+    -   **Run a task asynchronously**:
+        ```bash
+        curl -X POST http://127.0.0.1:8000/v1/tasks -H "Content-Type: application/json" -d '{"agent_or_group_name": "my_agent_api_name", "input_data": {"param": "value"}}'
+        ```
+    -   **Check task status**:
+        ```bash
+        curl http://127.0.0.1:8000/v1/tasks/{task_id}
+        ```
+
+A complete, runnable example can be found in `examples/api/main.py`.
+
 ## Advanced: Customizing Agent Behavior with Prompts
 
 Agenticle uses a powerful prompt templating system based on Jinja2 to define the core behavior and reasoning process of an agent. The default prompt is located at `agenticle/prompts/default_agent_prompt.md`, which instructs the agent to follow a `Think-Act` cycle.

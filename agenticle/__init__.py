@@ -7,4 +7,4 @@ from .mcp    import MCP
 
 from .dashboard  import Dashboard
 
-__version__ = "0.1.2-beta-2"
+__version__ = '0.1.2-beta-3'

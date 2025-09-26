@@ -279,6 +279,65 @@ Agenticle 内置了一个实时的监控仪表板，可以将来自 `Agent` 或 
 
 一个完整、可运行的示例可以在 `examples/dashboard/main.py` 中找到。
 
+## RESTful API 服务器
+
+Agenticle 内置了一个 FastAPI 服务器，它暴露了一个 RESTful API 用于与您的智能体和群组进行交互。这使您可以轻松地将 Agenticle 集成到更大型的应用程序中，构建自定义用户界面，或以编程方式管理任务。
+
+### API 特性
+
+- **异步任务执行**: 启动长时间运行的智能体任务，并轮询其状态和结果。
+- **实时事件流**: 使用 Server-Sent Events (SSE) 从正在运行的智能体获取实时事件流。
+- **动态智能体注册**: 注册任意数量的预配置智能体或群组，使它们可以通过 API 使用。
+
+### 如何使用
+
+1.  **安装 API 依赖**:
+    ```bash
+    pip install "agenticle[api]"
+    ```
+
+2.  **创建服务器脚本**:
+    创建一个 Python 脚本 (例如, `run_api.py`) 来定义、注册和运行您的智能体。
+
+    ```python
+    # in run_api.py
+    from agenticle.agent import Agent
+    import agenticle.server as server
+
+    # 1. 像往常一样定义您的智能体和群组
+    my_agent = Agent(...)
+
+    # 2. 将它们注册到服务器
+    server.register("my_agent_api_name", my_agent)
+
+    # 3. 启动服务器
+    if __name__ == "__main__":
+        server.start_server()
+    ```
+
+3.  **运行服务器**:
+    ```bash
+    python run_api.py
+    ```
+
+4.  **与 API 交互**:
+    您现在可以使用任何 HTTP 客户端与 API 进行交互。
+
+    -   **流式传输任务**:
+        ```bash
+        curl -X POST http://127.0.0.1:8000/v1/tasks/stream -H "Content-Type: application/json" -d '{"agent_or_group_name": "my_agent_api_name", "input_data": {"param": "value"}}'
+        ```
+    -   **异步运行任务**:
+        ```bash
+        curl -X POST http://127.0.0.1:8000/v1/tasks -H "Content-Type: application/json" -d '{"agent_or_group_name": "my_agent_api_name", "input_data": {"param": "value"}}'
+        ```
+    -   **检查任务状态**:
+        ```bash
+        curl http://127.0.0.1:8000/v1/tasks/{task_id}
+        ```
+
+一个完整、可运行的示例可以在 `examples/api/main.py` 中找到。
+
 ## 高级用法: 使用提示词定制智能体行为
 
 Agenticle 使用基于 Jinja2 的强大提示词模板系统来定义智能体的核心行为和推理过程。默认的提示词位于 `agenticle/prompts/default_agent_prompt.md`，它指示智能体遵循一个“思考-行动”循环。

@@ -26,7 +26,11 @@ dependencies = [
 [project.optional-dependencies]
 dashboard = [
     "fastapi",
-    "uvicorn[standard]"
+    "uvicorn"
+]
+api = [
+    "fastapi",
+    "uvicorn"
 ]
 
 [project.urls]
