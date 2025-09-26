@@ -23,6 +23,12 @@ dependencies = [
     "requests"
 ]
 
+[project.optional-dependencies]
+dashboard = [
+    "fastapi",
+    "uvicorn[standard]"
+]
+
 [project.urls]
 "Homepage" = "https://github.com/A03HCY/AgentFrame"
 "Bug Tracker" = "https://github.com/A03HCY/AgentFrame/issues"

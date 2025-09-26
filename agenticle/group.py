@@ -109,7 +109,7 @@ class Group:
             
             agent._configure_with_tools(final_toolset, extra_context=extra_context)
 
-    def run(self, stream: bool = False, **kwargs) -> Union[str, Iterator[Event]]:
+    def run(self, stream: bool = True, **kwargs) -> Union[str, Iterator[Event]]:
         """
         Runs the entire Group to perform a task.
         The execution flow depends on the group's mode.

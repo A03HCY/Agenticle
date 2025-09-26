@@ -5,4 +5,6 @@ from .event  import Event
 from .schema import Endpoint
 from .mcp    import MCP
 
+from .dashboard  import Dashboard
+
 __version__ = "0.1.2-beta-1"

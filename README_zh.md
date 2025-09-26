@@ -244,6 +244,41 @@ restored_agency.load_state("travel_agency_session.json")
 -   **`error`**: 当发生导致进程终止的严重错误时触发。
     -   *Payload*: 一条错误 `message` (消息)。
 
+## 实时监控仪表板
+
+Agenticle 内置了一个实时的监控仪表板，可以将来自 `Agent` 或 `Group` 的事件流可视化。这对于调试、观察智能体行为以及理解多智能体协作的流程非常有用。
+
+### 如何使用
+
+1.  **安装仪表板依赖**:
+    首先，安装仪表板所需的额外依赖项：
+    ```bash
+    pip install "agenticle[dashboard]"
+    ```
+
+2.  **包装您的智能体/群组**:
+    导入 `Dashboard` 类，并用它包装您现有的 `Agent` 或 `Group` 实例。您希望传递给智能体 `.run()` 方法的任何参数都应传递给 `Dashboard` 的构造函数。
+
+    ```python
+    from agenticle import Agent, Dashboard
+
+    # 假设 'my_agent' 是一个已经配置好的 Agent 实例
+    # 用于智能体运行的参数, 例如 `query="某个任务"`
+    agent_args = {"query": "伦敦的天气怎么样？"}
+
+    # 使用 Dashboard 包装智能体
+    dashboard = Dashboard(my_agent, **agent_args)
+
+    # 运行仪表板服务器
+    # 默认情况下，它会启动在 http://127.0.0.1:8000
+    dashboard.run()
+    ```
+
+3.  **在浏览器中查看**:
+    打开您的网络浏览器并访问 `http://127.0.0.1:8000`。您将看到当您的智能体或群组执行任务时实时推送的事件流。
+
+一个完整、可运行的示例可以在 `examples/dashboard/main.py` 中找到。
+
 ## 高级用法: 使用提示词定制智能体行为
 
 Agenticle 使用基于 Jinja2 的强大提示词模板系统来定义智能体的核心行为和推理过程。默认的提示词位于 `agenticle/prompts/default_agent_prompt.md`，它指示智能体遵循一个“思考-行动”循环。

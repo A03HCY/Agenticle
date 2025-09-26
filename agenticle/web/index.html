@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agenticle Live Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/leader-line-new@1.1.9/leader-line.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #1c1e21;
+            margin: 0;
+            padding: 20px;
+            overflow-x: auto;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        #dashboard-container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            padding-bottom: 20px;
+        }
+        .agent-column {
+            background-color: #ffffff;
+            border: 1px solid #dcdfe6;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            width: 350px;
+            flex-shrink: 0;
+            padding: 15px;
+        }
+        .agent-header {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #0056b3;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #0056b3;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .events-list {
+            list-style: none;
+            padding: 0;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .event {
+            border: 1px solid #e4e6eb;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+        .event-type {
+            font-weight: bold;
+            color: #444;
+            margin-bottom: 5px;
+        }
+        .event-payload {
+            background-color: #f8f9fa;
+            border: 1px solid #dcdfe6;
+            padding: 8px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 0.85em;
+        }
+        .payload-text {
+            font-style: italic;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h1>Agenticle Live Dashboard</h1>
+    <div id="dashboard-container"></div>
+
+    <script>
+        const container = document.getElementById('dashboard-container');
+        const agents = {};
+        const lines = {};
+        let eventCounter = 0;
+        let isSessionActive = true;
+
+        const eventSource = new EventSource('/events');
+
+        eventSource.onmessage = function(event) {
+            const eventData = JSON.parse(event.data);
+
+            if (eventData.type === 'session_end') {
+                isSessionActive = false;
+                eventSource.close();
+                console.log("Session ended normally.");
+                return;
+            }
+
+            const sourceName = eventData.source.replace('Agent:', '').replace('Group:', '');
+            eventCounter++;
+            const eventId = `event-${eventCounter}`;
+
+            if (!agents[sourceName]) {
+                const column = document.createElement('div');
+                column.className = 'agent-column';
+                column.id = `agent-${sourceName}`;
+                column.innerHTML = `<div class="agent-header">${sourceName}</div><ul class="events-list"></ul>`;
+                container.appendChild(column);
+                agents[sourceName] = {
+                    element: column,
+                    list: column.querySelector('.events-list'),
+                    lastEvent: null
+                };
+            }
+
+            const agent = agents[sourceName];
+            const lastEvent = agent.lastEvent;
+            const isStreamingEvent = eventData.type === 'reasoning_stream' || eventData.type === 'content_stream';
+
+            // Merge consecutive streaming events
+            if (isStreamingEvent && lastEvent && lastEvent.type === eventData.type) {
+                const lastPayloadElement = document.querySelector(`#${lastEvent.id} .payload-text`);
+                if (lastPayloadElement) {
+                    lastPayloadElement.innerHTML += escapeHtml(eventData.payload.content || '');
+                    lastPayloadElement.parentElement.parentElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                    return; // Stop further processing for this merged event
+                }
+            }
+
+            const listItem = document.createElement('li');
+            listItem.className = 'event';
+            listItem.id = eventId;
+            
+            const payloadHtml = formatPayload(eventData.type, eventData.payload);
+            
+            let title = eventData.type;
+            if (eventData.payload.current_step) {
+                if (eventData.type === 'step') {
+                    title = `Step ${eventData.payload.current_step}`;
+                } else {
+                    title = `Step ${eventData.payload.current_step}: ${eventData.type}`;
+                }
+            }
+            
+            listItem.innerHTML = `
+                <div class="event-type">${title}</div>
+                <div class="event-payload">${payloadHtml}</div>
+            `;
+            agent.list.appendChild(listItem);
+            listItem.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+            agent.lastEvent = { id: eventId, type: eventData.type };
+
+            handleVisualization(eventData, eventId, sourceName);
+        };
+
+        function formatPayload(type, payload) {
+            if (!payload) return '<i>No payload</i>';
+
+            let html = '';
+            switch (type) {
+                case 'reasoning_stream':
+                case 'content_stream':
+                    return `<span class="payload-text">${escapeHtml(payload.content || '')}</span>`;
+                case 'decision':
+                    const args = JSON.stringify(payload.tool_args || {});
+                    html = `<b>Tool Call:</b> ${escapeHtml(payload.tool_name)}(${escapeHtml(args)})`;
+                    if (payload.caller) {
+                        html += `<br><small><i>Called by: ${escapeHtml(payload.caller)}</i></small>`;
+                    }
+                    return html;
+                case 'tool_result':
+                    const output = typeof payload.output === 'object' ? JSON.stringify(payload.output, null, 2) : payload.output;
+                    return `<b>Result for ${escapeHtml(payload.tool_name)}:</b><br>${escapeHtml(output)}`;
+                case 'end':
+                    const endMessage = payload.final_answer || payload.result || payload.error || 'No final message.';
+                    return `<b>Task Finished:</b><br>${escapeHtml(endMessage)}`;
+                default:
+                    return `<details><summary>JSON Payload</summary><pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre></details>`;
+            }
+        }
+
+        function escapeHtml(unsafe) {
+            if (typeof unsafe !== 'string') {
+                try {
+                    unsafe = JSON.stringify(unsafe, null, 2);
+                } catch (e) {
+                    return unsafe;
+                }
+            }
+            return unsafe
+                .replace(/&/g, "&")
+                .replace(/</g, "<")
+                .replace(/>/g, ">")
+                .replace(/"/g, "'")
+                .replace(/'/g, "&#039;");
+        }
+
+        function handleVisualization(eventData, eventId, sourceName) {
+            const { type, payload } = eventData;
+
+            if (type === 'decision' && payload.tool_name in agents) {
+                const targetName = payload.tool_name;
+                const lineId = `${sourceName}->${targetName}-${eventId}`;
+                
+                const startElem = document.getElementById(eventId);
+                const endElem = agents[targetName].element;
+
+                if (startElem && endElem) {
+                    const line = new LeaderLine(startElem, endElem, {
+                        color: 'rgba(0, 86, 179, 0.7)',
+                        size: 2,
+                        path: 'fluid',
+                        endPlug: 'arrow1'
+                    });
+                    lines[lineId] = line;
+                }
+            }
+
+            if (type === 'tool_result' && payload.tool_name in agents) {
+                // This part is tricky as we don't know which decision corresponds to this result.
+                // A more robust solution would involve passing unique IDs.
+                // For now, we remove any line pointing to the target agent from the source.
+                Object.keys(lines).forEach(lineId => {
+                    if (lineId.startsWith(`${sourceName}->${payload.tool_name}`)) {
+                        lines[lineId].remove();
+                        delete lines[lineId];
+                    }
+                });
+            }
+        }
+
+        eventSource.onerror = function(err) {
+            if (isSessionActive) {
+                console.error("EventSource failed:", err);
+                container.innerHTML = `<div style="color: red; font-weight: bold;">Connection Error: Could not connect to the event stream. Is the Agenticle server running?</div>`;
+            }
+        };
+    </script>
+</body>
+</html>

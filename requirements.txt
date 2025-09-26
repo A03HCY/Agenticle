@@ -2,3 +2,5 @@ openai
 jinja2
 sseclient
 requests
+uvicorn[standard]
+fastapi
