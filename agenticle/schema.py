@@ -12,3 +12,17 @@ class Endpoint:
     """
     api_key: str
     base_url: str
+
+@dataclass(frozen=True)
+class Vote:
+    """
+    Stores a vote for a group.
+    
+    Attributes:
+        agent_name (str): The name of the agent that made the vote.
+        vote (str): The vote.
+        reason (str): The reason for the vote.
+    """
+    agent_name: str
+    vote: str
+    reason: str

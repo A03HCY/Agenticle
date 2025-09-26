@@ -10,7 +10,7 @@ Agenticle is a lightweight, event-driven Python framework for building and orche
 - **Simple Tool Integration**: Easily wrap any Python function into a `Tool` that agents can use.
 - **External Tool Integration (MCP)**: Connect to external, language-agnostic tool servers via the Model Context Protocol.
 - **Collaborative Groups**: Orchestrate multiple agents in a `Group`, enabling them to delegate tasks to each other.
-- **Flexible Communication Patterns**: Control how agents interact within a group using modes like `broadcast`, `manager_delegation`, or the sequential `round_robin`.
+- **Flexible Communication Patterns**: Control how agents interact within a group using modes like `broadcast`, `manager_delegation`, `round_robin`, or `voting`.
 - **Shared Workspace**: Provide a sandboxed file system (`Workspace`) to a group, allowing agents to collaborate by reading and writing files.
 - **State Management**: Save and load the state of an entire agent group, enabling long-running tasks to be paused and resumed.
 - **Event-Driven & Streamable**: The entire execution process is a stream of `Event` objects, providing full transparency and making it easy to build real-time UIs and logs.
@@ -171,6 +171,7 @@ A `Group` coordinates a list of `Agent` instances. Key parameters:
     - `'broadcast'` (default): Every agent can call every other agent in the group.
     - `'manager_delegation'`: Only the manager agent can call other agents. Specialist agents can only use their own tools and the shared tools.
     - `'round_robin'`: Agents are executed sequentially in the order they are provided. The output of one agent becomes the input for the next, forming a processing pipeline.
+    - `'voting'`: All agents in the group receive the same input and run in parallel. They are expected to return a structured vote on a set of options, and the group determines the final result by tallying the votes.
 - `workspace`: An optional `Workspace` instance or a file path to create a shared directory for all agents in the group.
 
 ### Workspace and State Management
