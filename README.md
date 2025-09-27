@@ -12,7 +12,6 @@ Agenticle is a lightweight, event-driven Python framework for building and orche
 - **Collaborative Groups**: Orchestrate multiple agents in a `Group`, enabling them to delegate tasks to each other.
 - **Flexible Communication Patterns**: Control how agents interact within a group using modes like `broadcast`, `manager_delegation`, `round_robin`, or `voting`.
 - **Shared Workspace**: Provide a sandboxed file system (`Workspace`) to a group, allowing agents to collaborate by reading and writing files.
-- **State Management**: Save and load the state of an entire agent group, enabling long-running tasks to be paused and resumed.
 - **Event-Driven & Streamable**: The entire execution process is a stream of `Event` objects, providing full transparency and making it easy to build real-time UIs and logs.
 - **Parallel Tool Execution**: Agents can execute multiple tools concurrently in a single step, significantly speeding up tasks that involve multiple I/O-bound operations (e.g., API calls, file I/O).
 - **Dynamic Prompt Templating**: Customize agent behavior using Jinja2 templates for system prompts, with the ability to inject contextual information from the group.
