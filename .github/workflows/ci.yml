@@ -7,7 +7,7 @@ on:
 
 # Set permissions for GITHUB_TOKEN to allow deployment to gh-pages
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -30,6 +30,9 @@ jobs:
       # MkDocs will intelligently build 'en' to site/ and 'zh' to site/zh/
       - name: Build documentation
         run: mkdocs build --config-file mkdocs.yml
+      
+      - name: List build output for debugging
+        run: ls -R ./site
 
       # Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
