@@ -1,0 +1,4 @@
+INHERIT: mkdocs.yml
+
+nav:
+  - 首页: zh/index.md
