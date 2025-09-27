@@ -4,3 +4,4 @@ sseclient
 requests
 uvicorn[standard]
 fastapi
+pyyaml

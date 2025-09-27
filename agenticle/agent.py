@@ -540,25 +540,9 @@ class Agent:
         ]
         agent_runner.__signature__ = Signature(params)
 
-        return Tool(func=agent_runner, is_agent_tool=True)
-
-    def get_state(self) -> Dict[str, Any]:
-        """Gets the current state of the agent.
-
-        Returns:
-            A dictionary containing the agent's history.
-        """
-        return {
-            "history": self.history
-        }
-
-    def set_state(self, state: Dict[str, Any]):
-        """Sets the state of the agent from a state dictionary.
-
-        Args:
-            state: A dictionary containing the agent's state.
-        """
-        self.history = state.get("history", [{"role": "system", "content": self.system_prompt}])
+        tool = Tool(func=agent_runner, is_agent_tool=True)
+        setattr(tool, 'source_entity', self)
+        return tool
 
     def reset(self):
         """Resets the agent's history.
@@ -566,3 +550,17 @@ class Agent:
         This clears the conversation history, preparing the agent for a new run.
         """
         self.history = [{"role": "system", "content": self.system_prompt}]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serializes the agent's configuration to a dictionary."""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "input_parameters": self.input_parameters,
+            "tools": [tool.name for tool in self.original_tools],
+            "model_id": self.model_id,
+            "target_lang": self.target_lang,
+            "max_steps": self.max_steps,
+            "optimize_tool_call": self.optimize_tool_call,
+            "endpoint": self.endpoint.name if self.endpoint else None
+        }

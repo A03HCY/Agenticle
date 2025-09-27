@@ -40,7 +40,8 @@ def main():
 
     openai_endpoint = Endpoint(
         api_key=api_key,
-        base_url=base_url
+        base_url=base_url,
+        name="default"
     )
     console = Console()
 

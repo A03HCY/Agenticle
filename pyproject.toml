@@ -20,7 +20,8 @@ dependencies = [
     "openai",
     "jinja2",
     "sseclient",
-    "requests"
+    "requests",
+    "pyyaml"
 ]
 
 [project.optional-dependencies]

@@ -1,5 +1,5 @@
 import json
-from typing import List, Dict, Union, Iterator, Optional
+from typing import List, Dict, Union, Iterator, Optional, Any
 
 from .agent import Agent
 from .tool  import Tool, Workspace
@@ -16,7 +16,7 @@ class Group:
     def __init__(
         self,
         name: str,
-        agents: List[Agent],
+        agents: List[Union[Agent, 'Group']],
         description: Optional[str] = None,
         manager_agent_name: Optional[str] = None,
         shared_tools: Optional[List[Tool]] = None,
@@ -41,8 +41,8 @@ class Group:
         """
         self.name = name
         self.description = description or f"A group of agents named {name}."
-        self.agents: Dict[str, Agent] = {agent.name: agent for agent in agents}
-        self.agent_sequence: List[Agent] = agents
+        self.agents: Dict[str, Union[Agent, 'Group']] = {agent.name: agent for agent in agents}
+        self.agent_sequence: List[Union[Agent, 'Group']] = agents
         self.shared_tools = shared_tools or []
         self.mode = mode
         
@@ -118,7 +118,11 @@ class Group:
             elif self.mode == 'voting':
                 extra_context["mode_description"] = "You are part of a voting panel. You will receive the same task as your peers. Perform the task to the best of your ability and provide a definitive final answer. Your answer will be compared with others to reach a consensus."
 
-            agent._configure_with_tools(final_toolset, extra_context=extra_context)
+            if isinstance(agent, Agent):
+                agent._configure_with_tools(final_toolset, extra_context=extra_context)
+            elif isinstance(agent, Group):
+                # Recursively wire sub-groups
+                agent._wire_agents()
 
     def as_tool(self) -> Tool:
         """Wraps the entire Group instance into a Tool, allowing it to be called by other agents."""
@@ -145,7 +149,9 @@ class Group:
         group_runner.__signature__ = Signature(params)
 
         # Mark as an agent tool so it's displayed correctly in the prompt
-        return Tool(func=group_runner, is_agent_tool=True, is_group_tool=True)
+        tool = Tool(func=group_runner, is_agent_tool=True, is_group_tool=True)
+        setattr(tool, 'source_entity', self)
+        return tool
 
     def run(self, stream: bool = True, retries: int = 0, **kwargs) -> Union[str, Iterator[Event]]:
         """
@@ -187,38 +193,6 @@ class Group:
                     final_answer = event.payload.get("result", "")
             return final_answer
 
-    def save_state(self, path: str):
-        """Saves the state of the entire group to a file.
-
-        This includes the state of every agent in the group.
-
-        Args:
-            path (str): The file path to save the JSON state file to.
-        """
-        group_state = {
-            agent_name: agent.get_state()
-            for agent_name, agent in self.agents.items()
-        }
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(group_state, f, indent=2)
-
-    def load_state(self, path: str):
-        """Loads the state of the entire group from a file.
-
-        This restores the state of every agent in the group.
-
-        Args:
-            path (str): The file path to load the JSON state file from.
-        """
-        with open(path, 'r', encoding='utf-8') as f:
-            group_state = json.load(f)
-        
-        for agent_name, agent_state in group_state.items():
-            if agent_name in self.agents:
-                self.agents[agent_name].set_state(agent_state)
-        
-        self._should_resume = True
-
     def _run_stream_round_robin(self, resume: bool = False, **kwargs) -> Iterator[Event]:
         """Runs the group in a sequential, round-robin fashion."""
         if resume:
@@ -254,6 +228,18 @@ class Group:
             final_result = agent_final_answer
 
         yield Event(f"Group:{self.name}", "end", {"result": final_result})
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serializes the group's configuration to a dictionary."""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "agents": [agent.name for agent in self.agent_sequence],
+            "manager_agent_name": self.manager_agent.name if self.manager_agent else None,
+            "shared_tools": [tool.name for tool in self.shared_tools],
+            "workspace": self.workspace.path if self.workspace else None,
+            "mode": self.mode
+        }
 
     def _run_stream_voting(self, resume: bool = False, retries: int = 0, **kwargs) -> Iterator[Event]:
         """Runs the group in a parallel, voting-based fashion, streaming all sub-events."""
@@ -291,7 +277,7 @@ class Group:
                             "role": "user",
                             "content": "Your previous response was not in the correct format. Please try again. Your final answer MUST be a valid JSON object with 'vote' and 'reason' keys."
                         })
-                        broker.emit(f"Group:{self.name}", "step", {"agent_name": agent.name, "action": "retry", "attempt": attempt})
+                        broker.emit(f"Group:{self.name}", "retry", {"agent_name": agent.name, "action": "retry", "attempt": attempt})
 
                     current_resume = resume if attempt == 0 else False
                     agent_stream = agent.run(stream=True, resume=current_resume, **agent_kwargs_with_options)
