@@ -113,6 +113,93 @@ for event in event_stream:
     print(event)
 ```
 
+### 3. 使用 YAML 进行声明式配置
+
+Agenticle 允许您在一个 YAML 配置文件中定义整个多智能体系统——包括智能体、群组及其关系。这种声明式方法将系统架构与代码分离，使得管理、版本控制和修改复杂配置变得更加容易。
+
+#### a. 在 YAML 中定义智能体和群组
+
+创建一个 `agent_config.yaml` 文件来定义您的智能体及其工具。您甚至可以定义使用其他智能体或群组作为工具的智能体，Agenticle 会自动解析依赖关系图。
+
+```yaml
+# agent_config.yaml
+endpoints:
+  default:
+    api_key: "你的API密钥"
+    base_url: "你的API基础URL"
+    
+agents:
+  - name: 天气专员
+    description: "专门为给定城市获取天气信息。"
+    input_parameters: [{name: "city"}]
+    tools: ["get_current_weather"] # 假设 'get_current_weather' 是一个已提供的 Tool
+    model_id: "你的模型ID"
+    endpoint: "default"
+
+  - name: 规划经理
+    description: "一个聪明的规划者，能够分解复杂的旅行请求并将任务委派给合适的专员。"
+    input_parameters: [{name: "user_request"}]
+    tools: ["天气专员"] # 使用另一个智能体作为工具
+    model_id: "你的模型ID"
+
+groups:
+  - name: 旅行社
+    agents: ["规划经理", "天气专员"]
+    manager_agent_name: "规划经理"
+    mode: "manager_delegation"
+```
+
+#### b. 从 YAML 加载模型
+
+然后，您可以使用 `Model` 类将此配置加载到您的 Python 代码中。您必须在初始化时提供任何非智能体的工具（例如 Python 函数）。
+
+```python
+from agenticle import Model, Tool
+
+# 为 YAML 中提到的工具定义 Python 函数
+def get_current_weather(location: str):
+    """获取指定地点的当前天气。"""
+    return f"{location}的天气：15摄氏度，晴朗。"
+
+weather_tool = Tool(get_current_weather)
+
+# 从 YAML 文件加载整个系统
+model = Model(path="agent_config.yaml", tools=[weather_tool])
+
+# 访问已创建的智能体和群组
+travel_agency_group = model.groups["旅行社"]
+planner_agent = model.agents["规划经理"]
+
+# 运行群组
+event_stream = travel_agency_group.run(stream=True, user_request="北京的天气怎么样？")
+for event in event_stream:
+    print(event)
+```
+
+#### c. 将程序化配置保存为 YAML (`modeliz`)
+
+反之，如果您以编程方式创建了智能体和群组，您可以使用 `modeliz` 函数将它们序列化为 YAML 文件。这对于快照动态配置或从基于代码的配置迁移到基于文件的配置非常有用。
+
+```python
+from agenticle import modeliz
+
+# 假设 weather_agent 和 planner_agent 是以编程方式定义的
+# ...
+
+# 以编程方式创建一个群组
+travel_agency = Group(
+    name="旅行社",
+    agents=[planner_agent, weather_agent],
+    manager_agent_name="规划经理",
+    mode='manager_delegation'
+)
+
+# 将群组（及其所有成员）序列化为 YAML 文件
+modeliz(groups=[travel_agency], path="generated_config.yaml")
+```
+
+这将创建一个 `generated_config.yaml` 文件，以声明方式表示您的智能体配置。
+
 ## 通过 MCP 与外部工具集成
 
 Agenticle 支持 **模型上下文协议 (Model Context Protocol, MCP)**，使智能体能够连接并使用来自外部、语言无关的服务器的工具。这使您能够将智能体的能力扩展到简单的 Python 函数之外，与微服务、外部 API 或用其他语言编写的工具集成。

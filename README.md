@@ -113,6 +113,93 @@ for event in event_stream:
     print(event)
 ```
 
+### 3. Declarative Setup with YAML
+
+Agenticle allows you to define your entire multi-agent system—including agents, groups, and their relationships—in a single YAML configuration file. This declarative approach separates your system's architecture from your code, making it easier to manage, version, and modify complex setups.
+
+#### a. Defining Agents and Groups in YAML
+
+Create a `agent_config.yaml` file to define your agents and their tools. You can even define agents that use other agents or groups as tools, and Agenticle will resolve the dependency graph.
+
+```yaml
+# agent_config.yaml
+endpoints:
+  default:
+    api_key: "YOUR_API_KEY"
+    base_url: "YOUR_API_BASE_URL"
+    
+agents:
+  - name: Weather_Specialist
+    description: "Specializes in fetching weather information for a given city."
+    input_parameters: [{name: "city"}]
+    tools: ["get_current_weather"] # Assumes 'get_current_weather' is a provided Tool
+    model_id: "your-model-id"
+    endpoint: "default"
+
+  - name: Planner_Manager
+    description: "A smart planner that breaks down complex travel requests and delegates tasks to the appropriate specialist."
+    input_parameters: [{name: "user_request"}]
+    tools: ["Weather_Specialist"] # Uses another agent as a tool
+    model_id: "your-model-id"
+
+groups:
+  - name: Travel_Agency
+    agents: ["Planner_Manager", "Weather_Specialist"]
+    manager_agent_name: "Planner_Manager"
+    mode: "manager_delegation"
+```
+
+#### b. Loading the Model from YAML
+
+You can then load this configuration into your Python code using the `Model` class. You must provide any non-agent tools (like Python functions) during initialization.
+
+```python
+from agenticle import Model, Tool
+
+# Define the Python function for the tool mentioned in the YAML
+def get_current_weather(location: str):
+    """Gets the current weather for a specified location."""
+    return f"Weather in {location}: 15 degrees Celsius, sunny."
+
+weather_tool = Tool(get_current_weather)
+
+# Load the entire system from the YAML file
+model = Model(path="agent_config.yaml", tools=[weather_tool])
+
+# Access the created agents and groups
+travel_agency_group = model.groups["Travel_Agency"]
+planner_agent = model.agents["Planner_Manager"]
+
+# Run the group
+event_stream = travel_agency_group.run(stream=True, user_request="How is the weather in Beijing?")
+for event in event_stream:
+    print(event)
+```
+
+#### c. Saving a Programmatic Setup to YAML (`modeliz`)
+
+Conversely, if you have created agents and groups programmatically, you can serialize them into a YAML file using the `modeliz` function. This is useful for snapshotting a dynamic setup or for migrating from a code-based to a file-based configuration.
+
+```python
+from agenticle import modeliz
+
+# Assume weather_agent and planner_agent are defined programmatically
+# ...
+
+# Create a group programmatically
+travel_agency = Group(
+    name="Travel_Agency",
+    agents=[planner_agent, weather_agent],
+    manager_agent_name="Planner_Manager",
+    mode='manager_delegation'
+)
+
+# Serialize the group (and all its members) to a YAML file
+modeliz(groups=[travel_agency], path="generated_config.yaml")
+```
+
+This creates a `generated_config.yaml` that declaratively represents your agent setup.
+
 ## Integrating with External Tools via MCP
 
 Agenticle supports the **Model Context Protocol (MCP)**, enabling agents to connect to and utilize tools from external, language-agnostic servers. This allows you to extend an agent's capabilities beyond simple Python functions, integrating with microservices, external APIs, or tools written in other languages.
