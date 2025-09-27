@@ -35,3 +35,8 @@ class EventBroker:
         """
         event = Event(source, type, payload)
         self.queue.put(event)
+
+def pass_event(iterator) -> Event:
+    event: Event = None
+    for event in iterator: pass
+    return event
