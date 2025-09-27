@@ -1,0 +1,24 @@
+site_name: Agenticle
+repo_url: https://github.com/A03HCY/Agenticle
+
+theme:
+  name: material
+  language: en
+  palette:
+    primary: white
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+extra:
+  alternate:
+    - name: English
+      link: /Agenticle/
+      lang: en
+      config: docs/en.yml
+    - name: 中文
+      link: /Agenticle/zh/
+      lang: zh
+      config: docs/zh.yml
