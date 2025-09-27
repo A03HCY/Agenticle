@@ -1,15 +1,40 @@
-name: ci 
+name: Deploy Docs to GitHub Pages
+
 on:
   push:
     branches:
       - main
+
+# Set permissions for GITHUB_TOKEN to allow deployment to gh-pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.9
-      - run: pip install mkdocs-material
-      - run: mkdocs gh-deploy --force
+          python-version: 3.x
+
+      - name: Install dependencies
+        run: pip install mkdocs-material
+
+      # Build all language versions into the site folder
+      # MkDocs will intelligently build 'en' to site/ and 'zh' to site/zh/
+      - name: Build documentation
+        run: mkdocs build --config-file mkdocs.yml
+
+      # Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # The folder the action should deploy.
+          publish_dir: ./site
