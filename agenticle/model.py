@@ -122,6 +122,7 @@ def modeliz(
     agents: List[Agent] = [],
     groups: List[Group] = [],
     path: str = 'agent_config.yaml',
+    save_endpoints: bool = False
 ):
     """
     Serializes lists of Agent and Group objects, including nested structures,
@@ -164,6 +165,9 @@ def modeliz(
         "agents": [agent.to_dict() for agent in discovered_agents.values()],
         "groups": [group.to_dict() for group in discovered_groups.values()],
     }
+
+    if not save_endpoints:
+        config.pop("endpoints")
 
     with open(path, 'w', encoding='utf-8') as f:
         yaml.dump(config, f, allow_unicode=True, sort_keys=False)
