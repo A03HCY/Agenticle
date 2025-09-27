@@ -285,26 +285,6 @@ my_group = Group(
 # read_file('data.txt') and write_file('result.txt') within the workspace.
 ```
 
-#### Saving and Loading State
-
-For tasks that might be interrupted or need to be resumed later, you can save the entire state of a `Group` (including the conversation history of every agent) to a file and load it back later.
-
-```python
-# Assume 'travel_agency' is a running Group
-# ... some interactions happen ...
-
-# Save the current state
-travel_agency.save_state("travel_agency_session.json")
-
-# Later, you can restore the group to its previous state
-# First, create the group with the same configuration
-restored_agency = Group(...) 
-# Then, load the state
-restored_agency.load_state("travel_agency_session.json")
-
-# The group can now continue the task from where it left off.
-```
-
 ## Understanding the Event Stream
 
 When you run an agent or group with `stream=True`, the framework returns an iterator of `Event` objects. Each event provides a real-time glimpse into the agent's execution cycle. This is incredibly useful for building UIs, logging, or debugging.

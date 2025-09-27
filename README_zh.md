@@ -285,26 +285,6 @@ my_group = Group(
 # read_file('data.txt') 和 write_file('result.txt') 这样的工具在工作空间内操作。
 ```
 
-#### 保存与加载状态
-
-对于可能被中断或需要稍后恢复的任务，您可以将 `Group` 的整个状态（包括每个智能体的对话历史）保存到一个文件，并在之后加载回来。
-
-```python
-# 假设 'travel_agency' 是一个正在运行的 Group
-# ... 发生了一些交互 ...
-
-# 保存当前状态
-travel_agency.save_state("travel_agency_session.json")
-
-# 稍后，您可以将群组恢复到之前的状态
-# 首先，使用相同的配置创建群组
-restored_agency = Group(...) 
-# 然后，加载状态
-restored_agency.load_state("travel_agency_session.json")
-
-# 群组现在可以从它离开的地方继续执行任务。
-```
-
 ## 理解事件流
 
 当您使用 `stream=True` 运行智能体或群组时，框架会返回一个 `Event` 对象的迭代器。每个事件都实时地展示了智能体执行周期的内部情况。这对于构建用户界面、记录日志或调试非常有用。
