@@ -278,7 +278,7 @@ Agenticle supports the **Model Context Protocol (MCP)**, allowing agents to conn
 
 Defining your system in YAML separates architecture from code, making complex setups easy to manage.
 -   **`model = Model(path="...", tools=[...])`**: Load a system from a YAML file. You must provide any non-serializable tools (like Python functions) at runtime.
--   **`modeliz(agents=[...], groups=[...], path="...")`**: Serialize a programmatically created system into a YAML file. This is great for snapshotting a dynamic setup.
+-   **`modelize(agents=[...], groups=[...], path="...")`**: Serialize a programmatically created system into a YAML file. This is great for snapshotting a dynamic setup.
 
 ### Customizing Agent Behavior with Prompts
 

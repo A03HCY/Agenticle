@@ -1,5 +1,4 @@
 import os
-import yaml
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.syntax import Syntax
@@ -10,7 +9,7 @@ import os
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from agenticle import Agent, Group, Tool, Endpoint, modeliz
+from agenticle import Agent, Group, Tool, Endpoint, modelize
 
 # --- Define Tools ---
 def get_weather(location: str):
@@ -23,7 +22,7 @@ def get_flights(destination: str):
 
 def main():
     """
-    Tests the modeliz function by creating a nested group structure,
+    Tests the modelize function by creating a nested group structure,
     serializing it to YAML, and printing the result.
     """
     load_dotenv()
@@ -80,12 +79,12 @@ def main():
     console.print("  - SubTravelGroup")
     console.print("    - FlightAgent")
 
-    # --- 2. Serialize using modeliz ---
+    # --- 2. Serialize using modelize ---
     console.print(f"\n[bold cyan]--- Serializing structure to {test_yaml_path} ---[/bold cyan]")
     
     # We only need to pass the top-level group. 
-    # modeliz should discover all nested agents and groups.
-    modeliz(groups=[main_group], path=test_yaml_path)
+    # modelize should discover all nested agents and groups.
+    modelize(groups=[main_group], path=test_yaml_path)
 
     # --- 3. Read and Print the YAML Output ---
     if os.path.exists(test_yaml_path):

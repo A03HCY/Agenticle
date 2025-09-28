@@ -1,4 +1,3 @@
-import os
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.rule import Rule
@@ -9,7 +8,7 @@ import os
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from agenticle import Agent, Group, Tool, Endpoint, Model, modeliz
+from agenticle import Agent, Group, Tool, Endpoint, Model, modelize
 
 # --- Define Tools ---
 def get_weather(location: str):
@@ -22,7 +21,7 @@ def get_flights(destination: str):
 
 def main():
     """
-    Tests the Model class by first generating a complex YAML config with modeliz,
+    Tests the Model class by first generating a complex YAML config with modelize,
     then loading it with the Model class and verifying the reconstructed structure.
     """
     load_dotenv()
@@ -55,7 +54,7 @@ def main():
 
     # --- 2. Generate YAML from this structure ---
     console.print(Rule("[bold cyan]Step 1: Generating complex YAML config[/bold cyan]", style="cyan"))
-    modeliz(groups=[main_group], path=test_yaml_path)
+    modelize(groups=[main_group], path=test_yaml_path)
     console.print(f"Generated '{test_yaml_path}' successfully.")
 
     # --- 3. Load the YAML using the Model class ---

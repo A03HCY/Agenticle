@@ -1,10 +1,10 @@
-import yaml
-from typing import List, Dict, Any, Optional, Union
-
-from .agent import Agent
-from .group import Group
-from .tool import Tool
+from typing  import List, Dict, Any, Optional, Union
+from .agent  import Agent
+from .group  import Group
+from .tool   import Tool
 from .schema import Endpoint
+
+import yaml
 
 class Model:
     def __init__(self, path: str, tools: Optional[List[Tool]] = None, endpoints: Optional[List[Endpoint]] = None):
@@ -118,7 +118,7 @@ class Model:
             mode=config.get("mode", "broadcast"),
         )
 
-def modeliz(
+def modelize(
     agents: List[Agent] = [],
     groups: List[Group] = [],
     path: str = 'agent_config.yaml',
