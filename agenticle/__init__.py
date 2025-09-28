@@ -4,7 +4,7 @@ from .tool   import Tool, Workspace
 from .event  import Event
 from .schema import Endpoint
 from .mcp    import MCP
-from .model  import Model, modeliz
+from .model  import Model, modelize
 from .       import server
 
 from .dashboard  import Dashboard
