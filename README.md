@@ -16,6 +16,43 @@ Agenticle is a lightweight, event-driven Python framework for building and orche
 - **Parallel Tool Execution**: Agents can execute multiple tools concurrently in a single step, significantly speeding up tasks that involve multiple I/O-bound operations (e.g., API calls, file I/O).
 - **Dynamic Prompt Templating**: Customize agent behavior using Jinja2 templates for system prompts, with the ability to inject contextual information from the group.
 
+## Real-Time Monitoring Dashboard
+
+Agenticle includes a built-in, real-time monitoring dashboard that visualizes the event stream from an `Agent` or `Group`. This is incredibly useful for debugging, observing agent behavior, and understanding the flow of a multi-agent collaboration.
+
+![Dashboard Screenshot](examples/dashboard.jpeg)
+
+### How to Use
+
+1.  **Install Dashboard Dependencies**:
+    First, install the necessary dependencies for the dashboard:
+    ```bash
+    pip install "agenticle[dashboard]"
+    ```
+
+2.  **Wrap Your Agent/Group**:
+    Import the `Dashboard` class and wrap your existing `Agent` or `Group` instance. Any arguments you want to pass to your agent's `.run()` method should be passed to the `Dashboard` constructor.
+
+    ```python
+    from agenticle import Agent, Dashboard
+
+    # Assume 'my_agent' is an already configured Agent instance
+    # Arguments for the agent run, e.g., `query="some task"`
+    agent_args = {"query": "What is the weather in London?"}
+
+    # Wrap the agent with the Dashboard
+    dashboard = Dashboard(my_agent, **agent_args)
+
+    # Run the dashboard server
+    # By default, it starts at http://127.0.0.1:8000
+    dashboard.run()
+    ```
+
+3.  **View in Browser**:
+    Open your web browser and navigate to `http://127.0.0.1:8000`. You will see a live feed of the events as your agent or group executes the task.
+
+A complete, runnable example can be found in `examples/dashboard/main.py`.
+
 ## Installation
 
 Install the package directly from PyPI:
@@ -311,41 +348,6 @@ Each `Event` has a `source` (e.g., `Agent:Weather_Specialist`), a `type`, and a 
     -   *Payload*: Contains the `final_answer` or an `error` message if the task failed.
 -   **`error`**: Fired if a critical error occurs that terminates the process.
     -   *Payload*: An error `message`.
-
-## Real-Time Monitoring Dashboard
-
-Agenticle includes a built-in, real-time monitoring dashboard that visualizes the event stream from an `Agent` or `Group`. This is incredibly useful for debugging, observing agent behavior, and understanding the flow of a multi-agent collaboration.
-
-### How to Use
-
-1.  **Install Dashboard Dependencies**:
-    First, install the necessary dependencies for the dashboard:
-    ```bash
-    pip install "agenticle[dashboard]"
-    ```
-
-2.  **Wrap Your Agent/Group**:
-    Import the `Dashboard` class and wrap your existing `Agent` or `Group` instance. Any arguments you want to pass to your agent's `.run()` method should be passed to the `Dashboard` constructor.
-
-    ```python
-    from agenticle import Agent, Dashboard
-
-    # Assume 'my_agent' is an already configured Agent instance
-    # Arguments for the agent run, e.g., `query="some task"`
-    agent_args = {"query": "What is the weather in London?"}
-
-    # Wrap the agent with the Dashboard
-    dashboard = Dashboard(my_agent, **agent_args)
-
-    # Run the dashboard server
-    # By default, it starts at http://127.0.0.1:8000
-    dashboard.run()
-    ```
-
-3.  **View in Browser**:
-    Open your web browser and navigate to `http://127.0.0.1:8000`. You will see a live feed of the events as your agent or group executes the task.
-
-A complete, runnable example can be found in `examples/dashboard/main.py`.
 
 ## RESTful API Server
 
