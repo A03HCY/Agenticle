@@ -278,7 +278,7 @@ Agenticle 支持 **模型上下文协议 (Model Context Protocol, MCP)**，允�
 
 在 YAML 中定义您的系统可以将架构与代码分离，使复杂配置易于管理。
 -   **`model = Model(path="...", tools=[...])`**: 从 YAML 文件加载系统。您必须在运行时提供任何不可序列化的工具（如 Python 函数）。
--   **`modeliz(agents=[...], groups=[...], path="...")`**: 将以编程方式创建的系统序列化为 YAML 文件。这对于快照动态配置非常有用。
+-   **`modelize(agents=[...], groups=[...], path="...")`**: 将以编程方式创建的系统序列化为 YAML 文件。这对于快照动态配置非常有用。
 
 ### 使用提示词定制智能体行为
 

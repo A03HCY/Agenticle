@@ -2,6 +2,7 @@ import os
 import json
 import jinja2
 import copy
+import time
 import concurrent.futures
 from openai import OpenAI
 from typing import List, Dict, Any, Optional, Union, Iterator
@@ -223,6 +224,9 @@ class Agent:
         Yields:
             Iterator[Event]: A stream of events representing the agent's activity.
         """
+        start_time = time.time()
+        last_step_time = start_time
+        
         # Only reset history if it's a new run
         if not resume:
             self.reset()
@@ -233,13 +237,27 @@ class Agent:
                 + "\nNow, begin your work."
             )
             self.history.append({"role": "user", "content": initial_prompt})
-            yield Event(f"Agent:{self.name}", "start", kwargs)
+            
+            payload = copy.deepcopy(kwargs)
+            payload["start_time"] = start_time
+            yield Event(f"Agent:{self.name}", "start", payload)
         else:
             # If resuming, just yield a resume event
             yield Event(f"Agent:{self.name}", "resume", {"history_length": len(self.history)})
+        
         # 2. "Think-Act" loop
         for step in range(self.max_steps):
-            yield Event(f"Agent:{self.name}", "step", {"current_step": step + 1})
+            current_time = time.time()
+            step_payload = {
+                "current_step": step + 1,
+                "current_time": current_time,
+                "total_elapsed_time": current_time - start_time
+            }
+            if step > 0:
+                step_payload["last_step_elapsed_time"] = current_time - last_step_time
+            last_step_time = current_time
+            
+            yield Event(f"Agent:{self.name}", "step", step_payload)
 
             # 3. Think: Call LLM
             llm_params = {
@@ -369,39 +387,57 @@ class Agent:
                 end_task_call = next((tc for tc in tool_calls if tc['function']['name'] == 'end_task'), None)
                 if end_task_call:
                     task_result = json.loads(end_task_call['function']['arguments'])
+                    
+                    current_time = time.time()
+                    task_result["current_time"] = current_time
+                    task_result["total_elapsed_time"] = current_time - start_time
+                    task_result["total_steps"] = step + 1
+                    
                     yield Event(f"Agent:{self.name}", "end", task_result)
                     return
 
                 # If there's only one tool call, execute it sequentially.
                 if len(tool_calls) == 1:
                     tool_call_data = tool_calls[0]
-                    tool_name = tool_call_data['function']['name']
-                    tool_args = json.loads(tool_call_data['function']['arguments'])
-                    yield Event(f"Agent:{self.name}", "decision", {"tool_name": tool_name, "tool_args": tool_args})
-
-                    tool_to_run = self.tools.get(tool_name)
-                    is_group = getattr(tool_to_run, 'is_group_tool', False)
-                    
-                    execution_generator = self._execute_tool_from_dict(tool_call_data)
-                    
                     tool_output = ""
-                    if isinstance(execution_generator, Iterator):
-                        for sub_event in execution_generator:
-                            yield sub_event
-                            
-                            is_end_event = sub_event.type == 'end'
-                            is_correct_source = sub_event.source == f"Group:{tool_name}"
-                            
-                            if is_group:
-                                if is_end_event and is_correct_source:
-                                    tool_output = sub_event.payload.get('result', '')
-                                    break
-                            elif is_end_event:
-                                tool_output = sub_event.payload.get('final_answer') or sub_event.payload.get('error', '')
-                    else:
-                        tool_output = execution_generator
+                    tool_name = "unknown_tool"
+                    tool_start_time = time.time()
+                    try:
+                        tool_name = tool_call_data['function']['name']
+                        tool_args = json.loads(tool_call_data['function']['arguments'])
+                        yield Event(f"Agent:{self.name}", "decision", {"tool_name": tool_name, "tool_args": tool_args})
 
-                    yield Event(f"Agent:{self.name}", "tool_result", {"tool_name": tool_name, "output": tool_output})
+                        tool_to_run = self.tools.get(tool_name)
+                        is_group = getattr(tool_to_run, 'is_group_tool', False)
+                        
+                        execution_generator = self._execute_tool_from_dict(tool_call_data)
+                        
+                        if isinstance(execution_generator, Iterator):
+                            for sub_event in execution_generator:
+                                yield sub_event
+                                
+                                is_end_event = sub_event.type == 'end'
+                                is_correct_source = sub_event.source == f"Group:{tool_name}"
+                                
+                                if is_group:
+                                    if is_end_event and is_correct_source:
+                                        tool_output = sub_event.payload.get('result', '')
+                                        break
+                                elif is_end_event:
+                                    tool_output = sub_event.payload.get('final_answer') or sub_event.payload.get('error', '')
+                        else:
+                            tool_output = execution_generator
+                    except Exception as e:
+                        tool_output = f"Error during tool execution: {e}"
+
+                    current_time = time.time()
+                    tool_result_payload = {
+                        "tool_name": tool_name,
+                        "output": tool_output,
+                        "current_time": current_time,
+                        "elapsed_time": current_time - tool_start_time
+                    }
+                    yield Event(f"Agent:{self.name}", "tool_result", tool_result_payload)
                     
                     self.history.append({
                         "role": "tool",
@@ -414,37 +450,45 @@ class Agent:
                     tool_results = {} # Store final outputs for history
 
                     def tool_worker(tool_call_data: Dict, broker: EventBroker):
-                        tool_name = tool_call_data['function']['name']
-                        tool_args = json.loads(tool_call_data['function']['arguments'])
-                        broker.emit(f"Agent:{self.name}", "decision", {"tool_name": tool_name, "tool_args": tool_args})
-
-                        tool_to_run = self.tools.get(tool_name)
-                        is_group = getattr(tool_to_run, 'is_group_tool', False)
-                        
-                        execution_generator = self._execute_tool_from_dict(tool_call_data)
-                        
+                        tool_start_time = time.time()
+                        tool_name = "unknown_tool"
                         final_output = ""
-                        if isinstance(execution_generator, Iterator):
-                            for sub_event in execution_generator:
-                                broker.queue.put(sub_event)
-                                
-                                is_end_event = sub_event.type == 'end'
-                                is_correct_source = sub_event.source == f"Group:{tool_name}"
-                                
-                                if is_group:
-                                    if is_end_event and is_correct_source:
-                                        final_output = sub_event.payload.get('result', '')
-                                        break 
-                                elif is_end_event:
-                                    final_output = sub_event.payload.get('final_answer') or sub_event.payload.get('error', '')
-                        else:
-                            final_output = execution_generator
-                        
+                        try:
+                            tool_name = tool_call_data['function']['name']
+                            tool_args = json.loads(tool_call_data['function']['arguments'])
+                            broker.emit(f"Agent:{self.name}", "decision", {"tool_name": tool_name, "tool_args": tool_args})
+
+                            tool_to_run = self.tools.get(tool_name)
+                            is_group = getattr(tool_to_run, 'is_group_tool', False)
+                            
+                            execution_generator = self._execute_tool_from_dict(tool_call_data)
+                            
+                            if isinstance(execution_generator, Iterator):
+                                for sub_event in execution_generator:
+                                    broker.queue.put(sub_event)
+                                    
+                                    is_end_event = sub_event.type == 'end'
+                                    is_correct_source = sub_event.source == f"Group:{tool_name}"
+                                    
+                                    if is_group:
+                                        if is_end_event and is_correct_source:
+                                            final_output = sub_event.payload.get('result', '')
+                                            break 
+                                    elif is_end_event:
+                                        final_output = sub_event.payload.get('final_answer') or sub_event.payload.get('error', '')
+                            else:
+                                final_output = execution_generator
+                        except Exception as e:
+                            final_output = f"Error during tool execution: {e}"
+
+                        current_time = time.time()
                         # Emit a special event to signal completion and carry the final result
                         broker.emit(f"Agent:{self.name}", "tool_completed", {
                             "tool_call_id": tool_call_data['id'],
                             "tool_name": tool_name,
-                            "output": final_output
+                            "output": final_output,
+                            "current_time": current_time,
+                            "elapsed_time": current_time - tool_start_time
                         })
 
                     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -457,8 +501,15 @@ class Agent:
                             if event.type == "tool_completed":
                                 completed_tools += 1
                                 tool_results[event.payload['tool_call_id']] = event.payload
+                                
+                                tool_result_payload = {
+                                    "tool_name": event.payload['tool_name'],
+                                    "output": event.payload['output'],
+                                    "current_time": event.payload['current_time'],
+                                    "elapsed_time": event.payload['elapsed_time']
+                                }
                                 # Yield the final tool_result event for this tool
-                                yield Event(f"Agent:{self.name}", "tool_result", {"tool_name": event.payload['tool_name'], "output": event.payload['output']})
+                                yield Event(f"Agent:{self.name}", "tool_result", tool_result_payload)
                             else:
                                 yield event # Forward sub-agent events in real-time
                     
@@ -484,7 +535,15 @@ class Agent:
         # If the loop finishes without completion
         final_message = f"Error: Agent '{self.name}' failed to complete the task within {self.max_steps} steps."
         yield Event(f"Agent:{self.name}", "error", {"message": final_message})
-        yield Event(f"Agent:{self.name}", "end", {"error": final_message})
+        
+        current_time = time.time()
+        end_payload = {
+            "error": final_message,
+            "current_time": current_time,
+            "total_elapsed_time": current_time - start_time,
+            "total_steps": self.max_steps
+        }
+        yield Event(f"Agent:{self.name}", "end", end_payload)
         return
     
     def _execute_tool_from_dict(self, tool_call_dict: Dict) -> Any:

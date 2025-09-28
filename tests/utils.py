@@ -102,7 +102,6 @@ def print_event(event: Event, console: Console):
         )
         
     else:
-        return
         # Fallback for any other event types
         console.rule(f"Unknown Event: {event.type}", style="red")
         console.print(event.payload)
