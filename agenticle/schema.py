@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict
-
+from .utils      import api_key, base_url
 
 @dataclass(frozen=True)
 class Endpoint:
@@ -11,9 +11,9 @@ class Endpoint:
         base_url (str): The base URL of the API.
         name (str): The name of the endpoint configuration.
     """
-    api_key: str
-    base_url: str
-    name: str = field(default="default")
+    api_key: str = field(default=api_key)
+    base_url: str = field(default=base_url)
+    name: str = field(default="env")
 
     def to_dict(self):
         return asdict(self)

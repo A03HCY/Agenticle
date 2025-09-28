@@ -1,9 +1,14 @@
-import json
-from typing import List, Dict, Union, Iterator, Optional, Any
+from typing      import List, Dict, Union, Iterator, Optional, Any
+from collections import Counter
 
-from .agent import Agent
-from .tool  import Tool, Workspace
-from .event import Event
+from .agent  import Agent
+from .tool   import Tool, Workspace
+from .event  import Event, EventBroker
+from .schema import Vote
+from .optimizer import BaseOptimizer, CompetitionOptimizer
+
+import concurrent.futures
+import json
 
 class Group:
     """
@@ -21,7 +26,8 @@ class Group:
         manager_agent_name: Optional[str] = None,
         shared_tools: Optional[List[Tool]] = None,
         workspace: Optional[Union[str, Workspace]] = None,
-        mode: str = 'broadcast'
+        mode: str = 'broadcast',
+        optimizer: Optional[BaseOptimizer] = None
     ):
         """Initializes an Agent Group.
 
@@ -45,9 +51,13 @@ class Group:
         self.agent_sequence: List[Union[Agent, 'Group']] = agents
         self.shared_tools = shared_tools or []
         self.mode = mode
+        self.optimizer = optimizer
         
-        if mode not in ['broadcast', 'manager_delegation', 'round_robin', 'voting']:
+        if mode not in ['broadcast', 'manager_delegation', 'round_robin', 'voting', 'competition']:
             raise ValueError(f"Unsupported mode: {mode}")
+
+        if mode == 'competition' and not self.optimizer:
+            self.optimizer = CompetitionOptimizer()
 
         self.workspace = None
         self.manager_agent = None
@@ -118,6 +128,9 @@ class Group:
             elif self.mode == 'voting':
                 extra_context["mode_description"] = "You are part of a voting panel. You will receive the same task as your peers. Perform the task to the best of your ability and provide a definitive final answer. Your answer will be compared with others to reach a consensus."
 
+            elif self.mode == 'competition':
+                extra_context["mode_description"] = "You are in a competition. You will receive the same task as your peers. Perform the task to the best of your ability and provide a clear, comprehensive final answer. The best answer among all participants will be chosen."
+
             if isinstance(agent, Agent):
                 agent._configure_with_tools(final_toolset, extra_context=extra_context)
             elif isinstance(agent, Group):
@@ -131,9 +144,6 @@ class Group:
 
         # Dynamically create a wrapper function that calls the group's run method
         def group_runner(stream: bool = True, **kwargs):
-            # Note: Unlike Agent.as_tool(), this does not create a new instance of the Group.
-            # The same group instance is reused. This means state can be preserved between calls
-            # if the group is not reset.
             return self.run(stream=stream, **kwargs)
 
         group_runner.__name__ = self.name
@@ -181,6 +191,8 @@ class Group:
         elif self.mode == 'voting':
             runner = self._run_stream_voting
             runner_kwargs["retries"] = retries # Add retries for voting mode
+        elif self.mode == 'competition':
+            runner = self._run_stream_competition
         else:
             runner = self._run_stream_manager_based
 
@@ -229,6 +241,73 @@ class Group:
 
         yield Event(f"Group:{self.name}", "end", {"result": final_result})
 
+    def _run_stream_competition(self, resume: bool = False, **kwargs) -> Iterator[Event]:
+        """Runs the group in a parallel, competition-based fashion."""
+        if resume:
+            yield Event(f"Group:{self.name}", "resume", {"mode": "competition"})
+        else:
+            yield Event(f"Group:{self.name}", "start", {"mode": "competition", "input": kwargs})
+
+        event_broker = EventBroker()
+        agent_results: List[Dict[str, Any]] = []
+
+        def agent_worker(agent: Agent, agent_kwargs: Dict, broker: EventBroker):
+            """Runs an agent and captures its final_answer."""
+            final_answer = None
+            try:
+                agent_stream = agent.run(stream=True, resume=resume, **agent_kwargs)
+                for event in agent_stream:
+                    broker.queue.put(event)
+                    if event.type == "end":
+                        final_answer = event.payload.get("final_answer")
+            except Exception as e:
+                error_msg = f"Agent {agent.name} threw an exception: {e}"
+                broker.emit(f"Group:{self.name}", "error", {"agent_name": agent.name, "message": error_msg})
+            
+            broker.emit(f"Group:{self.name}", "agent_completed", {"agent_name": agent.name, "result": final_answer})
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for agent in self.agent_sequence:
+                executor.submit(agent_worker, agent, kwargs, event_broker)
+            
+            completed_agents = 0
+            while completed_agents < len(self.agent_sequence):
+                event: Event = event_broker.queue.get()
+                if event.type == "agent_completed":
+                    completed_agents += 1
+                    if event.payload.get("result"):
+                        agent_results.append(event.payload)
+                else:
+                    yield event
+        
+        if not agent_results:
+            final_result = "No consensus reached: no agents provided a valid result."
+            yield Event(f"Group:{self.name}", "error", {"message": final_result})
+            yield Event(f"Group:{self.name}", "end", {"result": final_result})
+            return
+
+        yield Event(f"Group:{self.name}", "step", {"action": "Optimizing results..."})
+        
+        # Extract the task description from kwargs. A bit simplistic, assumes a 'task' or 'input' key.
+        task_description = kwargs.get('task', kwargs.get('input', ''))
+        
+        # Run the optimizer
+        try:
+            final_answers = [res['result'] for res in agent_results]
+            best_result = self.optimizer.optimize(task_description=str(task_description), results=final_answers)
+        except Exception as e:
+            error_msg = f"Optimizer failed: {e}"
+            yield Event(f"Group:{self.name}", "error", {"message": error_msg})
+            yield Event(f"Group:{self.name}", "end", {"result": error_msg})
+            return
+
+        yield Event(f"Group:{self.name}", "end", {
+            "result": best_result,
+            "details": {
+                "all_results": agent_results
+            }
+        })
+
     def to_dict(self) -> Dict[str, Any]:
         """Serializes the group's configuration to a dictionary."""
         return {
@@ -247,11 +326,6 @@ class Group:
             yield Event(f"Group:{self.name}", "resume", {"mode": "voting"})
         else:
             yield Event(f"Group:{self.name}", "start", {"mode": "voting", "input": kwargs})
-
-        import concurrent.futures
-        from collections import Counter
-        from .schema import Vote
-        from .event import EventBroker
 
         voting_options = kwargs.get("options", {})
         if not voting_options:

@@ -4,6 +4,16 @@ import inspect
 import os
 import base64
 
+from dotenv      import load_dotenv
+import os
+
+load_dotenv()
+
+api_key = os.getenv('API_KEY') or os.getenv('OPENAI_API_KEY') or ''
+base_url  = os.getenv("BASE_URL") or ''
+model_id = os.getenv("MODEL_ID") or ''
+
+
 def get_function_details(func: Callable) -> Dict[str, Any]:
     """
     检查一个函数，并以结构化的形式返回其参数和文档字符串。

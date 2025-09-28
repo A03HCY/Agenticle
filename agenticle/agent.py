@@ -1,6 +1,7 @@
 import os
 import json
 import jinja2
+import copy
 import concurrent.futures
 from openai import OpenAI
 from typing import List, Dict, Any, Optional, Union, Iterator
@@ -8,6 +9,8 @@ from typing import List, Dict, Any, Optional, Union, Iterator
 from .schema import Endpoint
 from .tool   import Tool, EndTaskTool
 from .event  import Event, EventBroker
+from .utils  import model_id
+
 from .utils.parser import IncrementalXmlParser
 
 class Agent:
@@ -15,10 +18,10 @@ class Agent:
         self,
         name: str,
         description: str,
-        input_parameters: List[Dict[str, Any]],
-        tools: List[Tool],
-        endpoint: Endpoint,
-        model_id: str,
+        input_parameters: List[Dict[str, Any]] = [],
+        tools: List[Tool] = [],
+        model_id: str = model_id,
+        endpoint: Endpoint = Endpoint(),
         prompt_template_path: Optional[str] = None,
         target_lang:str = 'English',
         max_steps: int = 10,
@@ -44,12 +47,9 @@ class Agent:
         self.model_id = model_id
         self.target_lang = target_lang
         self.optimize_tool_call = optimize_tool_call
-
-        os.environ['OPENAI_API_KEY'] = endpoint.api_key
         
         self.endpoint = endpoint
         self.max_steps = max_steps
-        self._client = OpenAI(api_key=endpoint.api_key, base_url=endpoint.base_url)
 
         self.original_tools: List[Tool] = tools[:]
         self.tools: Dict[str, Tool] = {tool.name: tool for tool in tools}
@@ -64,7 +64,17 @@ class Agent:
         self.system_prompt: str = self._generate_system_prompt_from_template(prompt_template_path)
         
         self.history: List[Dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
+
+        self._client: OpenAI = None
+        self._init_client()
     
+    def _init_client(self,):
+        """Initializes the OpenAI client with the provided API key and base URL."""
+        prev = os.environ['OPENAI_API_KEY']
+        os.environ['OPENAI_API_KEY'] = self.endpoint.api_key
+        self._client = OpenAI(api_key=self.endpoint.api_key, base_url=self.endpoint.base_url)
+        os.environ['OPENAI_API_KEY'] = prev
+        
     def _configure_with_tools(self, tools: List[Tool], extra_context: Optional[Dict[str, Any]] = None):
         """Reconfigures the agent with a given list of tools and extra context.
 
@@ -550,6 +560,27 @@ class Agent:
         This clears the conversation history, preparing the agent for a new run.
         """
         self.history = [{"role": "system", "content": self.system_prompt}]
+
+    def copy(self) -> 'Agent':
+        """Creates a deep copy of the agent instance."""
+        return Agent(
+            name=self.name,
+            description=self.description,
+            input_parameters=copy.deepcopy(self.input_parameters),
+            tools=self.original_tools[:],  # Use a copy of the original tools list
+            model_id=self.model_id,
+            endpoint=self.endpoint,
+            prompt_template_path=getattr(self, '_prompt_template_path', None),
+            target_lang=self.target_lang,
+            max_steps=self.max_steps,
+            optimize_tool_call=self.optimize_tool_call
+        )
+
+    def __mul__(self, other: int) -> List['Agent']:
+        """Creates multiple copies of the agent."""
+        if not isinstance(other, int):
+            raise TypeError("Can only multiply an Agent by an integer.")
+        return [self.copy() for _ in range(other)]
 
     def to_dict(self) -> Dict[str, Any]:
         """Serializes the agent's configuration to a dictionary."""
