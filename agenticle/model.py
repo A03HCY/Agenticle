@@ -5,11 +5,15 @@ from .tool   import Tool
 from .schema import Endpoint
 
 import yaml
+import os
 
 class Model:
-    def __init__(self, path: str, tools: Optional[List[Tool]] = None, endpoints: Optional[List[Endpoint]] = None):
-        with open(path, 'r', encoding='utf-8') as f:
-            self.config: Dict[str, Any] = yaml.safe_load(f)
+    def __init__(self, data: str, tools: Optional[List[Tool]] = None, endpoints: Optional[List[Endpoint]] = None):
+        if os.path.isfile(data):
+            with open(data, 'r', encoding='utf-8') as f:
+                self.config: Dict[str, Any] = yaml.safe_load(f)
+        else:
+            self.config: Dict[str, Any] = yaml.safe_load(data)
         
         self.tools: Dict[str, Tool] = {tool.name: tool for tool in tools} if tools else {}
         self.endpoints: Dict[str, Endpoint] = self._load_endpoints(endpoints)
@@ -33,7 +37,14 @@ class Model:
         group_configs = self.config.get("groups", [])
         
         entities: Dict[str, Union[Agent, Group]] = {}
-        unresolved_agents = list(agent_configs)
+
+        # Prioritize manager agents by placing them at the beginning of the list
+        manager_agent_names = {g.get("manager_agent_name") for g in group_configs if g.get("manager_agent_name")}
+        
+        manager_configs = [a for a in agent_configs if a["name"] in manager_agent_names]
+        other_agent_configs = [a for a in agent_configs if a["name"] not in manager_agent_names]
+        
+        unresolved_agents = manager_configs + other_agent_configs
         unresolved_groups = list(group_configs)
 
         last_unresolved_count = -1
@@ -76,10 +87,17 @@ class Model:
                 else:
                     raise ValueError(f"Dependency '{name}' not ready.")
         
-        endpoint_name = config.get("endpoint", "default")
-        endpoint = self.endpoints.get(endpoint_name)
-        if not endpoint:
+        endpoint_name = config.get("endpoint")
+        endpoint = self.endpoints.get(endpoint_name) if endpoint_name else None
+        if endpoint_name and not endpoint:
             raise ValueError(f"Endpoint '{endpoint_name}' not found.")
+        if endpoint == None:
+            endpoint = Endpoint()
+        else:
+            endpoint = Endpoint(
+                api_key=endpoint.api_key,
+                api_url=endpoint.api_url,
+            )
 
         return Agent(
             name=config["name"],
