@@ -5,7 +5,6 @@ from .event  import Event
 from .schema import Endpoint
 from .mcp    import MCP
 from .model  import Model, modelize
-from .       import server
 
 from .dashboard  import Dashboard
 
