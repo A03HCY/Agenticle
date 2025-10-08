@@ -21,18 +21,13 @@ dependencies = [
     "jinja2",
     "sseclient",
     "requests",
-    "pyyaml"
+    "pyyaml",
+    "fastapi",
+    "uvicorn"
 ]
 
 [project.optional-dependencies]
-dashboard = [
-    "fastapi",
-    "uvicorn"
-]
-api = [
-    "fastapi",
-    "uvicorn"
-]
+
 
 [project.urls]
 "Homepage" = "https://github.com/A03HCY/AgentFrame"

@@ -4,9 +4,8 @@ from .tool   import Tool, Workspace
 from .event  import Event
 from .schema import Endpoint
 from .mcp    import MCP
-from .model  import Model, modeliz
-from .       import server
+from .model  import Model, modelize
 
 from .dashboard  import Dashboard
 
-__version__ = '0.1.3-beta-2'
+__version__ = '0.1.3-beta-3'

@@ -1,5 +1,6 @@
 from .agent  import Agent
 from .schema import Endpoint
+from .tool   import Tool
 from .utils  import model_id
 import os
 from typing import List
@@ -54,8 +55,7 @@ class CompetitionOptimizer(BaseOptimizer):
         Returns:
             str: The selected best result.
         """
-        if not self.agent:
-            self.init()
+        self.init()
         
         # The results are formatted as a numbered list for the prompt.
         formatted_results = "\n".join(f"{i+1}. {result}" for i, result in enumerate(results))
@@ -91,6 +91,78 @@ class PromptOptimizer(BaseOptimizer):
         )
 
     def optimize(self, prompt: str) -> str:
-        if not self.agent:
-            self.init()
+        self.init()
         return self.agent.run(stream=False, prompt=prompt)
+
+class NaturalLanguageOptimizer(BaseOptimizer):
+    """
+    Generates a full agent or group YAML configuration from a brief natural language requirement
+    using a two-step brainstorming and formatting process.
+    """
+    def __init__(self, endpoint: Endpoint = Endpoint(), model_id: str = model_id):
+        super().__init__(endpoint, model_id)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.brainstorm_template_path = os.path.join(current_dir, 'prompts', 'brainstorm_prompt.md')
+        self.format_template_path = os.path.join(current_dir, 'prompts', 'format_prompt.md')
+        
+        self.brainstorm_agent: Agent = None
+        self.format_agent: Agent = None
+
+    def init(self, tools: List[Tool] = []):
+        """Initializes the internal agents."""
+        self.brainstorm_agent = Agent(
+            name="BrainstormingAgent",
+            description="A creative expert in designing AI agent teams.",
+            input_parameters=[
+                {"name": "requirement", "description": "The user's brief requirement."},
+                {"name": "entity_type", "description": "The type of entity to create ('Agent' or 'Group')."}
+            ],
+            tools=[],
+            endpoint=self.endpoint,
+            model_id=self.model_id,
+            prompt_template_path=self.brainstorm_template_path,
+        )
+        
+        self.format_agent = Agent(
+            name="FormattingAgent",
+            description="A YAML formatting expert.",
+            input_parameters=[
+                {"name": "brainstorming_plan", "description": "The unstructured brainstorming plan."}
+            ],
+            tools=[],
+            endpoint=self.endpoint,
+            model_id=self.model_id,
+            prompt_template_path=self.format_template_path,
+        )
+        
+        available_tools_str = "\n".join(
+            f'- `{tool.name}`: {tool.description}' for tool in tools
+        ) if tools else "No external tools provided."
+
+        self.brainstorm_agent._configure_with_tools(
+            tools=[],
+            extra_context={"available_tools": available_tools_str}
+        )
+
+    def optimize(self, requirement: str, tools: List[Tool] = [], group: bool = False) -> str:
+        """
+        Generates a full, well-formatted YAML configuration from a brief requirement.
+        """
+        self.init(tools=tools)
+        entity_type = "Group" if group else "Agent"
+
+        # Step 1: Brainstorm the configuration
+        brainstorming_plan = self.brainstorm_agent.run(
+            stream=False,
+            requirement=requirement,
+            entity_type=entity_type
+        )
+
+        # Step 2: Format the brainstormed plan into YAML
+        raw_yaml = self.format_agent.run(
+            stream=False,
+            brainstorming_plan=brainstorming_plan
+        )
+        
+        # Clean the output by removing markdown fences
+        return raw_yaml.strip().replace("```yaml", "").replace("```", "").strip()
