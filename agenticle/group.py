@@ -1,5 +1,6 @@
 from typing      import List, Dict, Union, Iterator, Optional, Any
 from collections import Counter
+from functools   import partial
 
 from .agent  import Agent
 from .tool   import Tool, Workspace
@@ -98,7 +99,25 @@ class Group:
             if hasattr(agent, 'original_tools'):
                 final_toolset.extend(agent.original_tools)
             
-            final_toolset.extend(self.shared_tools)
+            # Special handling for workspace tools to inject the agent context
+            for tool in self.shared_tools:
+                if tool.name == 'read_file' and isinstance(agent, Agent):
+                    # Create a new function with the 'agent' argument pre-filled
+                    bound_func = partial(tool.func, agent=agent)
+                    
+                    # Create a new Tool instance for this agent, excluding the 'agent' parameter from the LLM's view
+                    analysis = tool.func.__globals__['analyze_tool_function'](tool.func)
+                    new_params = [p for p in analysis['parameters'] if p['name'] != 'agent']
+                    
+                    agent_specific_tool = Tool(
+                        func=bound_func,
+                        name=tool.name,
+                        description=tool.description,
+                        parameters=new_params
+                    )
+                    final_toolset.append(agent_specific_tool)
+                else:
+                    final_toolset.append(tool)
 
             extra_context = {"collaboration_mode": self.mode}
             is_manager = (agent.name == self.manager_agent.name)

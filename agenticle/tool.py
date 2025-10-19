@@ -147,6 +147,8 @@ class EndTaskTool(Tool):
 import os
 import tempfile
 import shutil
+import json
+from .mutilmodal import get_input_processor
 
 
 class Workspace:
@@ -203,18 +205,33 @@ class Workspace:
         target_path = self._resolve_path(sub_path)
         return "\n".join(os.listdir(target_path))
 
-    def read_file(self, file_path: str) -> str:
-        """Reads the content of a file within the workspace.
+    def read_file(self, file_path: str, agent: Any, chunk_size: int = 4000, overlap: int = 200) -> str:
+        """
+        Call this tool to read a file from the workspace and load its content into your memory (history).
+        This tool can handle any file type, including text, code, and images, as it uses a multimodal processor.
+        For large text files, the content will be automatically split into manageable chunks and loaded sequentially.
 
         Args:
-            file_path (str): The relative path of the file to read.
+            file_path (str): The relative path of the file you want to read.
+            agent (Any): The agent instance to whose history the file will be added.
+            chunk_size (int): The size of each text chunk for large files.
+            overlap (int): The overlap between consecutive text chunks.
 
         Returns:
-            str: The content of the file.
+            str: A confirmation message indicating the file has been loaded.
         """
-        abs_path = self._resolve_path(file_path)
-        with open(abs_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        if not agent or not hasattr(agent, 'add_file'):
+            return "Error: A valid agent instance with an `add_file` method must be provided."
+
+        try:
+            abs_path = self._resolve_path(file_path)
+            # Delegate the file reading and history management to the agent's `add_file` method
+            agent.add_file(abs_path, chunk_size=chunk_size, overlap=overlap)
+            return f"File '{file_path}' has been successfully read and added to the agent's history."
+        except FileNotFoundError:
+            return f"Error: File '{file_path}' not found."
+        except Exception as e:
+            return f"Error processing file '{file_path}': {e}"
 
     def write_file(self, file_path: str, content: str) -> str:
         """Writes content to a file within the workspace.

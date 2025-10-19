@@ -5,6 +5,7 @@
 [![PyPI version](https://badge.fury.io/py/agenticle.svg)](https://badge.fury.io/py/agenticle)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/pypi/pyversions/agenticle.svg)](https://pypi.org/project/agenticle)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/A03HCY/Agenticle)
 
 Agenticle is a lightweight, event-driven Python framework for building and orchestrating multi-agent systems. It provides simple yet powerful abstractions to create individual agents, equip them with tools, and make them collaborate in groups to solve complex tasks.
 

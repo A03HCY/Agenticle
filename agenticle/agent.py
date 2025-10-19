@@ -5,12 +5,18 @@ import copy
 import time
 import concurrent.futures
 from typing import List, Dict, Any, Optional, Union, Iterator
+from functools import partial
 
 from .schema import Endpoint, Response # Import Response
 from .tool   import Tool, EndTaskTool
 from .event  import Event, EventBroker
 from .utils  import model_id
 from .service import Service # Import the Service factory
+from .schema import Endpoint
+from .tool   import Tool, EndTaskTool, Workspace
+from .event  import Event, EventBroker
+from .utils  import model_id
+from .mutilmodal import get_input_processor
 
 # IncrementalXmlParser is no longer needed here as service handles parsing
 # from .utils.parser import IncrementalXmlParser
@@ -57,7 +63,29 @@ class Agent:
         self.max_steps = max_steps
 
         self.original_tools: List[Tool] = tools[:]
-        self.tools: Dict[str, Tool] = {tool.name: tool for tool in tools}
+        
+        # Bind self to workspace tools if they are provided directly
+        processed_tools = []
+        for tool in self.original_tools:
+            # Check if the tool is the read_file method of a Workspace instance
+            if tool.name == 'read_file' and hasattr(tool.func, '__self__') and isinstance(tool.func.__self__, Workspace):
+                bound_func = partial(tool.func, agent=self)
+                
+                # Create a new tool with the agent parameter hidden from the LLM
+                analysis = tool.func.__globals__['analyze_tool_function'](tool.func)
+                new_params = [p for p in analysis['parameters'] if p['name'] != 'agent']
+                
+                agent_specific_tool = Tool(
+                    func=bound_func,
+                    name=tool.name,
+                    description=tool.description,
+                    parameters=new_params
+                )
+                processed_tools.append(agent_specific_tool)
+            else:
+                processed_tools.append(tool)
+
+        self.tools: Dict[str, Tool] = {tool.name: tool for tool in processed_tools}
         
         if "end_task" in self.tools:
             print("Warning: A user-provided tool named 'end_task' is being overridden by the built-in final answer tool.")
@@ -76,6 +104,42 @@ class Agent:
             service_type=self.service_type,
             optimize_tool_call=self.optimize_tool_call # Pass optimize_tool_call to the service
         )
+        self._client: OpenAI = None
+        self._init_client()
+
+    def add_file(self, path: str, chunk_size: int = 4000, overlap: int = 200):
+        """Processes a file, splits large text content into chunks, and adds it to history.
+
+        Args:
+            path (str): The path to the file.
+            chunk_size (int): The size of each text chunk.
+            overlap (int): The overlap between consecutive text chunks.
+        """
+        processor = get_input_processor(path)
+        processed_outputs = processor.read_input(chunk_size=chunk_size, overlap=overlap)
+        
+        for data in processed_outputs:
+            filename = data["source"]["filename"]
+            content_list = data["content"]
+            
+            # Check if the content is text
+            is_text = len(content_list) == 1 and content_list[0].get("type") == "text"
+
+            if is_text:
+                text = content_list[0]["text"]
+                message = f"Content from '{filename}':\n\n{text}"
+                self.history.append({"role": "user", "content": message})
+            else:
+                # For non-text content (e.g., images), add the content list directly
+                self.history.append({"role": "user", "content": content_list})
+    
+    def _init_client(self,):
+        """Initializes the OpenAI client with the provided API key and base URL."""
+        prev = os.environ.get('OPENAI_API_KEY')
+        os.environ['OPENAI_API_KEY'] = self.endpoint.api_key
+        self._client = OpenAI(api_key=self.endpoint.api_key, base_url=self.endpoint.base_url)
+        if prev:
+            os.environ['OPENAI_API_KEY'] = prev
         
     def _configure_with_tools(self, tools: List[Tool], extra_context: Optional[Dict[str, Any]] = None):
         """Reconfigures the agent with a given list of tools and extra context.
