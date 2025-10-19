@@ -2,6 +2,14 @@ from dataclasses import dataclass, field, asdict
 from typing      import Optional
 from .utils      import api_key, base_url
 
+_base_url = {
+    'openai_compat': 'https://api.openai.com/v1/',
+}
+
+_platform_map = {
+    'openai_compat': ['openai', 'deepseek'],
+}
+
 @dataclass(frozen=True)
 class Endpoint:
     """
@@ -16,6 +24,19 @@ class Endpoint:
     base_url: str = field(default=base_url)
     name: str = field(default="env")
     platform: Optional[str] = field(default='openai_compat')
+
+    def __post_init__(self):
+        if not self.base_url:
+            self.base_url = _base_url.get(self.platform, "")
+        
+        if self.platform in _platform_map: return
+
+        for platform, aliases in _platform_map.items():
+            if self.platform in aliases:
+                self.platform = platform
+                return
+        
+        raise ValueError(f"Invalid platform: {self.platform}")
 
     def to_dict(self):
         return asdict(self)
