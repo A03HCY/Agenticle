@@ -12,6 +12,7 @@ load_dotenv()
 api_key = os.getenv('API_KEY') or os.getenv('OPENAI_API_KEY') or ''
 base_url  = os.getenv("BASE_URL") or ''
 model_id = os.getenv("MODEL_ID") or ''
+platform = os.getenv("PLATFORM") or 'openai_compat'
 
 
 def get_function_details(func: Callable) -> Dict[str, Any]:

@@ -8,4 +8,4 @@ from .model  import Model, modelize
 
 from .dashboard  import Dashboard
 
-__version__ = '0.1.3-beta-3'
+__version__ = '0.1.3-beta-4'

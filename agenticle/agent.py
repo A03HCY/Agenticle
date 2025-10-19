@@ -4,17 +4,22 @@ import jinja2
 import copy
 import time
 import concurrent.futures
-from openai import OpenAI
 from typing import List, Dict, Any, Optional, Union, Iterator
 from functools import partial
 
+from .schema import Endpoint, Response # Import Response
+from .tool   import Tool, EndTaskTool
+from .event  import Event, EventBroker
+from .utils  import model_id
+from .service import Service # Import the Service factory
 from .schema import Endpoint
 from .tool   import Tool, EndTaskTool, Workspace
 from .event  import Event, EventBroker
 from .utils  import model_id
 from .mutilmodal import get_input_processor
 
-from .utils.parser import IncrementalXmlParser
+# IncrementalXmlParser is no longer needed here as service handles parsing
+# from .utils.parser import IncrementalXmlParser
 
 class Agent:
     def __init__(
@@ -25,6 +30,7 @@ class Agent:
         tools: List[Tool] = [],
         model_id: str = model_id,
         endpoint: Endpoint = Endpoint(),
+        service_type: str = 'openai_compat', # New parameter for service type
         prompt_template_path: Optional[str] = None,
         target_lang:str = 'English',
         max_steps: int = 10,
@@ -38,6 +44,7 @@ class Agent:
             input_parameters (List[Dict[str, Any]]): A list of dictionaries describing the agent's input parameters.
             tools (List[Tool]): A list of tools available to the agent.
             endpoint (Endpoint): The API endpoint configuration for the language model.
+            service_type (str): The type of service to use for the language model (e.g., 'openai_compat').
             model_id (str): The ID of the language model to use.
             prompt_template_path (Optional[str]): The path to a Jinja2 template for the system prompt.
             target_lang (str): The target language for the agent's responses.
@@ -52,6 +59,7 @@ class Agent:
         self.optimize_tool_call = optimize_tool_call
         
         self.endpoint = endpoint
+        self.service_type = service_type # Store service type
         self.max_steps = max_steps
 
         self.original_tools: List[Tool] = tools[:]
@@ -90,6 +98,12 @@ class Agent:
         
         self.history: List[Dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
 
+        # Initialize the service using the factory, passing optimize_tool_call
+        self.service = Service(
+            endpoint=self.endpoint,
+            service_type=self.service_type,
+            optimize_tool_call=self.optimize_tool_call # Pass optimize_tool_call to the service
+        )
         self._client: OpenAI = None
         self._init_client()
 
@@ -320,114 +334,69 @@ class Agent:
                 llm_params["tools"] = self._api_tools
                 llm_params["tool_choice"] = "auto"
             
-            response_stream = self._client.chat.completions.create(**llm_params)
+            # Use the service to get the completion stream
+            response_stream = self.service.completion(**llm_params)
 
-            # 4. Reassemble response from the stream
+            # 4. Reassemble response from the stream using standardized Response objects
             full_response_content = ""
             full_reasoning_content = ""
-            tool_calls_in_progress = []
-            
-            if self.optimize_tool_call:
-                parser = IncrementalXmlParser(root_tag="response")
-                in_tool_call = False
+            tool_calls_in_progress = [] # Accumulate tool calls across responses
 
-                def on_enter(tag, attrs):
-                    nonlocal in_tool_call
-                    if tag == 'tool_call':
-                        in_tool_call = True
-                        tool_calls_in_progress.append({"function": {"name": "", "arguments": ""}})
+            # Iterate over the standardized Response objects from the service
+            for response_obj in response_stream:
+                if response_obj.thinking:
+                    full_reasoning_content += response_obj.thinking
+                    yield Event(f"Agent:{self.name}", "reasoning_stream", {"content": response_obj.thinking})
 
-                def on_exit(tag):
-                    nonlocal in_tool_call
-                    if tag == 'tool_call':
-                        in_tool_call = False
-
-                parser.on_enter_tag = on_enter
-                parser.on_exit_tag = on_exit
+                if response_obj.content:
+                    full_response_content += response_obj.content
+                    yield Event(f"Agent:{self.name}", "content_stream", {"content": response_obj.content})
                 
-                def handle_tool_name(name_chunk):
-                    if tool_calls_in_progress:
-                        tool_calls_in_progress[-1]["function"]["name"] += name_chunk
-
-                def handle_tool_args(args_chunk):
-                    if tool_calls_in_progress:
-                        tool_calls_in_progress[-1]["function"]["arguments"] += args_chunk
-                
-                def handle_root_text(text_chunk):
-                    yield Event(f"Agent:{self.name}", "content_stream", {"content": text_chunk})
-
-                parser.register_streaming_callback("tool_name", handle_tool_name)
-                parser.register_streaming_callback("parameter", handle_tool_args)
-                parser.register_streaming_callback(IncrementalXmlParser.ROOT, handle_root_text)
-
-                for chunk in response_stream:
-                    try:
-                        delta = chunk.choices[0].delta
-                    except:
-                        continue
-                    
-                    if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
-                        full_reasoning_content += delta.reasoning_content
-                        yield Event(f"Agent:{self.name}", "reasoning_stream", {"content": delta.reasoning_content})
-
-                    if delta and delta.content:
-                        full_response_content += delta.content
-                        parser.feed(delta.content)
-                parser.close()
-
-            else: # Original OpenAI tools handling
-                for chunk in response_stream:
-                    try:
-                        delta = chunk.choices[0].delta
-                    except:
-                        continue
-                    
-                    if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
-                        full_reasoning_content += delta.reasoning_content
-                        yield Event(f"Agent:{self.name}", "reasoning_stream", {"content": delta.reasoning_content})
-
-                    if delta.content:
-                        full_response_content += delta.content
-                        yield Event(f"Agent:{self.name}", "content_stream", {"content": delta.content})
-                    
-                    if delta.tool_calls:
-                        for tool_call_chunk in delta.tool_calls:
-                            if tool_call_chunk.index >= len(tool_calls_in_progress):
-                                tool_calls_in_progress.append({"id": f"call_{tool_call_chunk.index}", "type": "function", "function": {"name": "", "arguments": ""}})
+                if response_obj.tool_calls:
+                    for tc_info in response_obj.tool_calls:
+                        if "delta" in tc_info: # This is a tool call chunk
+                            tool_call_chunk = tc_info["delta"]
+                            index = tc_info["index"]
                             
-                            func = tool_calls_in_progress[tool_call_chunk.index]['function']
-                            if tool_call_chunk.function.name:
-                                func['name'] += tool_call_chunk.function.name
-                            if tool_call_chunk.function.arguments:
-                                func['arguments'] += tool_call_chunk.function.arguments
+                            if index >= len(tool_calls_in_progress):
+                                tool_calls_in_progress.append({"id": f"call_{index}", "type": "function", "function": {"name": "", "arguments": ""}})
                             
-                            yield Event(f"Agent:{self.name}", "tool_call_stream", {"index": tool_call_chunk.index, "delta": tool_call_chunk.function.dict()})
+                            func = tool_calls_in_progress[index]['function']
+                            if tool_call_chunk.get('name'):
+                                func['name'] += tool_call_chunk['name']
+                            if tool_call_chunk.get('arguments'):
+                                func['arguments'] += tool_call_chunk['arguments']
+                            
+                            yield Event(f"Agent:{self.name}", "tool_call_stream", {"index": index, "delta": tool_call_chunk})
+                        else: # This is a complete tool call (from the final Response object)
+                            tool_calls_in_progress.append(tc_info)
 
             # Assemble the complete message to add to history
             assembled_message = {"role": "assistant"}
             if full_response_content:
                 assembled_message["content"] = full_response_content
             
-            if tool_calls_in_progress:
-                valid_tool_calls = []
-                for i, tc in enumerate(tool_calls_in_progress):
-                    func = tc.get('function', {})
-                    if func.get('name') and func.get('arguments'):
-                        try:
-                            # Validate JSON arguments
-                            json.loads(func['arguments'])
-                            valid_tool_calls.append({
-                                "id": tc.get("id", f"call_{i}"),
-                                "type": "function",
-                                "function": func
-                            })
-                        except json.JSONDecodeError:
-                            continue # Skip invalid tool calls
-                
-                if valid_tool_calls:
-                    assembled_message["tool_calls"] = valid_tool_calls
-                    if not self.optimize_tool_call:
-                         assembled_message["content"] = None
+            # Filter and validate tool calls for history
+            valid_tool_calls = []
+            for i, tc in enumerate(tool_calls_in_progress):
+                func = tc.get('function', {})
+                if func.get('name') and func.get('arguments'):
+                    try:
+                        # Validate JSON arguments
+                        json.loads(func['arguments'])
+                        valid_tool_calls.append({
+                            "id": tc.get("id", f"call_{i}"),
+                            "type": "function",
+                            "function": func
+                        })
+                    except json.JSONDecodeError:
+                        continue # Skip invalid tool calls
+            
+            if valid_tool_calls:
+                assembled_message["tool_calls"] = valid_tool_calls
+                # If there are tool calls, content should be None for native tool calling
+                if not self.optimize_tool_call:
+                    assembled_message["content"] = None
             
             self.history.append(assembled_message)
             # 5. Decision and Action
@@ -641,6 +610,7 @@ class Agent:
                 input_parameters=self.input_parameters,
                 tools=self.original_tools, # Ensure isolation
                 endpoint=self.endpoint,
+                service_type=self.service_type, # Pass the service type
                 model_id=self.model_id,
                 max_steps=self.max_steps,
                 optimize_tool_call=self.optimize_tool_call
@@ -663,6 +633,15 @@ class Agent:
         tool = Tool(func=agent_runner, is_agent_tool=True)
         setattr(tool, 'source_entity', self)
         return tool
+    
+    def add_content(self, content: str, role: str = 'user'):
+        """Adds content to the agent's history.
+        
+        Args:
+            content: The content to add.
+            role: The role of the content ('user' or 'assistant').
+        """
+        self.history.append({"role": role, "content": content})
 
     def reset(self):
         """Resets the agent's history.
@@ -680,6 +659,7 @@ class Agent:
             tools=self.original_tools[:],  # Use a copy of the original tools list
             model_id=self.model_id,
             endpoint=self.endpoint,
+            service_type=self.service_type, # Pass the service type
             prompt_template_path=getattr(self, '_prompt_template_path', None),
             target_lang=self.target_lang,
             max_steps=self.max_steps,
