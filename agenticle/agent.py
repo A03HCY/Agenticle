@@ -104,8 +104,6 @@ class Agent:
             service_type=self.service_type,
             optimize_tool_call=self.optimize_tool_call # Pass optimize_tool_call to the service
         )
-        self._client: OpenAI = None
-        self._init_client()
 
     def add_file(self, path: str, chunk_size: int = 4000, overlap: int = 200):
         """Processes a file, splits large text content into chunks, and adds it to history.
@@ -133,14 +131,6 @@ class Agent:
                 # For non-text content (e.g., images), add the content list directly
                 self.history.append({"role": "user", "content": content_list})
     
-    def _init_client(self,):
-        """Initializes the OpenAI client with the provided API key and base URL."""
-        prev = os.environ.get('OPENAI_API_KEY')
-        os.environ['OPENAI_API_KEY'] = self.endpoint.api_key
-        self._client = OpenAI(api_key=self.endpoint.api_key, base_url=self.endpoint.base_url)
-        if prev:
-            os.environ['OPENAI_API_KEY'] = prev
-        
     def _configure_with_tools(self, tools: List[Tool], extra_context: Optional[Dict[str, Any]] = None):
         """Reconfigures the agent with a given list of tools and extra context.
 

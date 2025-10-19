@@ -27,13 +27,14 @@ class Endpoint:
 
     def __post_init__(self):
         if not self.base_url:
-            self.base_url = _base_url.get(self.platform, "")
+            object.__setattr__(self, 'base_url', _base_url.get(self.platform, ''))
+
         
         if self.platform in _platform_map: return
 
         for platform, aliases in _platform_map.items():
             if self.platform in aliases:
-                self.platform = platform
+                object.__setattr__(self, 'platform', platform)
                 return
         
         raise ValueError(f"Invalid platform: {self.platform}")
