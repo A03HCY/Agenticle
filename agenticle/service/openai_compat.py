@@ -1,16 +1,17 @@
 import os
-from openai import OpenAI
 from typing import List, Dict, Any, Iterator
 
 from agenticle.schema import Endpoint, Response
 
 class OpenAICompatService:
     def __init__(self, endpoint: Endpoint):
+        from openai import OpenAI
         self.endpoint = endpoint
         self._client: OpenAI = None
         self._init_client()
 
     def _init_client(self):
+        from openai import OpenAI
         """Initializes the OpenAI client with the provided API key and base URL."""
         # Temporarily store the original API key if it exists in environment
         prev_api_key = os.environ.get('OPENAI_API_KEY')
@@ -36,7 +37,7 @@ class OpenAICompatService:
         llm_params = {
             "model": model,
             "messages": messages,
-            "stream": True, # Always stream from the service, Agent will handle non-streaming
+            "stream": True,
             **kwargs
         }
         

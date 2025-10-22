@@ -38,5 +38,6 @@ class EventBroker:
 
 def pass_event(iterator) -> Event:
     event: Event = None
-    for event in iterator: pass
+    for event in iterator:
+        if event.type == "end": break
     return event

@@ -1,12 +1,12 @@
 import json
-from typing import Dict, Type, Iterator
+from typing import Dict, Iterator, Any
 
 from agenticle.schema import Endpoint, Response
 from agenticle.service.openai_compat import OpenAICompatService
 from agenticle.utils.parser import IncrementalXmlParser
 
 
-_supported_services: Dict[str, Type[OpenAICompatService]] = {
+_supported_services: Dict[str, Any] = {
     'openai_compat': OpenAICompatService
 }
 
